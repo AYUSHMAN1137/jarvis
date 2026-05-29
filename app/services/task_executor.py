@@ -9,14 +9,23 @@ from app.services.decision_types import (
     INTENT_OPEN, INTENT_PLAY, INTENT_CAMERA,
     INTENT_OPEN_WEBCAM, INTENT_CLOSE_WEBCAM,
     INTENT_GENERATE_IMAGE, INTENT_CONTENT,
-    INTENT_GOOGLE_SEARCH, INTENT_YOUTUBE_SEARCH, INTENT_CHAT,
+    INTENT_GOOGLE_SEARCH, INTENT_YOUTUBE_SEARCH,
+    INTENT_GMAIL_INBOX, INTENT_GMAIL_UNREAD,
+    INTENT_CALENDAR_LIST, INTENT_CALENDAR_SEARCH,
+    INTENT_CALENDAR_CREATE, INTENT_CALENDAR_DELETE,
+    INTENT_DRIVE_SEARCH, INTENT_DRIVE_UPLOAD, INTENT_DRIVE_LIST,
+    INTENT_CHAT,
 )
+from app.services.skills.calendar_service import CalendarService
+from app.services.skills.drive_service import DriveService
+from app.services.skills.gmail_service import GmailService
 
 logger = logging.getLogger("J.A.R.V.I.S")
 
 @dataclass
 class TaskResponse:
     text: str = ""
+    notes: List[str] = field(default_factory=list)
     wopens: List[str] = field(default_factory=list)
     plays: List[str] = field(default_factory=list)
     images: List[str] = field(default_factory=list)
@@ -27,8 +36,17 @@ class TaskResponse:
 
 class TaskExecutor:
 
-    def __init__(self, groq_service=None):
+    def __init__(
+        self,
+        groq_service=None,
+        gmail_service: Optional[GmailService] = None,
+        calendar_service: Optional[CalendarService] = None,
+        drive_service: Optional[DriveService] = None,
+    ):
         self.groq_service = groq_service
+        self.gmail_service = gmail_service or GmailService()
+        self.calendar_service = calendar_service or CalendarService()
+        self.drive_service = drive_service or DriveService()
         logger.info("[TASK] TaskExecutor initialized (Pollinations.ai for images)")
 
     def execute(
@@ -60,6 +78,33 @@ class TaskExecutor:
 
             elif intent_type == INTENT_YOUTUBE_SEARCH:
                 tasks.append(("youtube", self._do_youtube_search, payload))
+
+            elif intent_type == INTENT_GMAIL_INBOX:
+                tasks.append(("gmail", self._do_gmail_inbox, payload))
+
+            elif intent_type == INTENT_GMAIL_UNREAD:
+                tasks.append(("gmail", self._do_gmail_unread, payload))
+
+            elif intent_type == INTENT_CALENDAR_LIST:
+                tasks.append(("calendar", self._do_calendar_list, payload))
+
+            elif intent_type == INTENT_CALENDAR_SEARCH:
+                tasks.append(("calendar", self._do_calendar_search, payload))
+
+            elif intent_type == INTENT_CALENDAR_CREATE:
+                tasks.append(("calendar", self._do_calendar_create, payload))
+
+            elif intent_type == INTENT_CALENDAR_DELETE:
+                tasks.append(("calendar", self._do_calendar_delete, payload))
+
+            elif intent_type == INTENT_DRIVE_SEARCH:
+                tasks.append(("drive", self._do_drive_search, payload))
+
+            elif intent_type == INTENT_DRIVE_UPLOAD:
+                tasks.append(("drive", self._do_drive_upload, payload))
+
+            elif intent_type == INTENT_DRIVE_LIST:
+                tasks.append(("drive", self._do_drive_list, payload))
 
             elif intent_type == INTENT_OPEN_WEBCAM:
                 response.cam = {"action": "open"}
@@ -117,6 +162,9 @@ class TaskExecutor:
                         elif tag == "youtube" and result:
                             response.youtubesearches.append(result)
 
+                        elif tag in {"gmail", "calendar", "drive"} and result:
+                            response.notes.append(result)
+
                     except Exception as e:
                         failed_tags.append(tag)
                         err_msg = str(e)[:100]
@@ -142,6 +190,7 @@ class TaskExecutor:
             parts = self._build_conversational_response(
                 response.wopens, response.plays, response.images,
                 response.contents, response.googlesearches, response.youtubesearches,
+                response.notes,
             )
             response.text = parts if parts else "All done."
 
@@ -181,9 +230,13 @@ class TaskExecutor:
         contents: List[str],
         googlesearches: List[str],
         youtubesearches: List[str],
+        notes: List[str],
     ) -> str:
         
         parts = []
+
+        if notes:
+            parts.extend(notes)
 
         if wopens:
             names = [self._url_to_display_name(u) for u in wopens]
@@ -322,3 +375,75 @@ class TaskExecutor:
         if not query:
             return "https://www.youtube.com"
         return f"https://www.youtube.com/results?search_query={quote(query, safe='')}"
+
+    def _do_gmail_inbox(self, payload: dict) -> str:
+        try:
+            return self.gmail_service.get_inbox_summary()
+        except Exception as e:
+            logger.warning("[TASK] Gmail inbox fetch failed: %s", e)
+            return f"I couldn't open Gmail inbox right now: {e}"
+
+    def _do_gmail_unread(self, payload: dict) -> str:
+        try:
+            return self.gmail_service.get_unread_summary()
+        except Exception as e:
+            logger.warning("[TASK] Gmail unread fetch failed: %s", e)
+            return f"I couldn't read unread emails right now: {e}"
+
+    def _do_calendar_list(self, payload: dict) -> str:
+        query = (payload.get("query", payload.get("message", "")) or "").strip().lower()
+        try:
+            if any(token in query for token in ("today", "aaj", "todays", "today's")):
+                return self.calendar_service.get_today_events_summary()
+            return self.calendar_service.get_upcoming_events_summary()
+        except Exception as e:
+            logger.warning("[TASK] Calendar list failed: %s", e)
+            return f"I couldn't read your calendar right now: {e}"
+
+    def _do_calendar_search(self, payload: dict) -> str:
+        query = (payload.get("query", payload.get("message", "")) or "").strip()
+        try:
+            return self.calendar_service.search_events_summary(query)
+        except Exception as e:
+            logger.warning("[TASK] Calendar search failed: %s", e)
+            return f"I couldn't search your calendar right now: {e}"
+
+    def _do_calendar_create(self, payload: dict) -> str:
+        query = (payload.get("query", payload.get("message", "")) or "").strip()
+        try:
+            return self.calendar_service.create_event_from_text(query)
+        except Exception as e:
+            logger.warning("[TASK] Calendar create failed: %s", e)
+            return f"I couldn't create that calendar event right now: {e}"
+
+    def _do_calendar_delete(self, payload: dict) -> str:
+        query = (payload.get("query", payload.get("message", "")) or "").strip()
+        try:
+            return self.calendar_service.delete_event_from_text(query)
+        except Exception as e:
+            logger.warning("[TASK] Calendar delete failed: %s", e)
+            return f"I couldn't delete that calendar event right now: {e}"
+
+    def _do_drive_search(self, payload: dict) -> str:
+        query = (payload.get("query", payload.get("message", "")) or "").strip()
+        try:
+            return self.drive_service.search_files_summary(query)
+        except Exception as e:
+            logger.warning("[TASK] Drive search failed: %s", e)
+            return f"I couldn't search Google Drive right now: {e}"
+
+    def _do_drive_upload(self, payload: dict) -> str:
+        query = (payload.get("query", payload.get("message", "")) or "").strip()
+        try:
+            return self.drive_service.upload_from_text(query)
+        except Exception as e:
+            logger.warning("[TASK] Drive upload failed: %s", e)
+            return f"I couldn't upload that file to Google Drive right now: {e}"
+
+    def _do_drive_list(self, payload: dict) -> str:
+        query = (payload.get("query", payload.get("message", "")) or "").strip()
+        try:
+            return self.drive_service.list_items_summary(query)
+        except Exception as e:
+            logger.warning("[TASK] Drive list failed: %s", e)
+            return f"I couldn't list your Google Drive items right now: {e}"

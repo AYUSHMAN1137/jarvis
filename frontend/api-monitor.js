@@ -70,7 +70,7 @@ function eventItem(e, isLatest) {
 function render(data) {
     const groq = data?.groq || { summary: {}, keys: [], configured_keys: 0 };
     const summary = groq.summary || {};
-    const tavily = data?.providers?.tavily || { configured: false, attempts: 0, successes: 0, failures: 0 };
+    const serper = data?.providers?.serper || { configured: false, key_count: 0, attempts: 0, successes: 0, failures: 0 };
     const successPct = pct(summary.successes || 0, summary.attempts || 0);
     const latestEvent = data?.events?.[0] || null;
     const latestTraceId = latestEvent?.trace_id || null;
@@ -92,8 +92,8 @@ function render(data) {
             <div class="monitor-stat"><span>Failures</span><b>${summary.failures || 0}</b></div>
             <div class="monitor-stat"><span>Rate limits</span><b>${summary.rate_limits || 0}</b></div>
             <div class="monitor-stat"><span>Success rate</span><b>${successPct}%</b></div>
-            <div class="monitor-stat"><span>Tavily configured</span><b>${tavily.configured ? 'Yes' : 'No'}</b></div>
-            <div class="monitor-stat"><span>Tavily usage</span><b>${tavily.attempts || 0}</b></div>
+            <div class="monitor-stat"><span>Serper configured</span><b>${serper.configured ? `Yes (${serper.key_count || 1} keys)` : 'No'}</b></div>
+            <div class="monitor-stat"><span>Serper usage</span><b>${serper.attempts || 0}</b></div>
         </div>
     `;
 

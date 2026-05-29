@@ -12,12 +12,18 @@ ALL_CATEGORIES: List[str] = ["general", "realtime", "camera", "task", "mixed"]
 TaskType = Literal[
     "open", "play", "generate_image", "content",
     "google_search", "youtube_search",
+    "gmail_inbox", "gmail_unread",
+    "calendar_list", "calendar_search", "calendar_create", "calendar_delete",
+    "drive_search", "drive_upload", "drive_list",
     "open_webcam", "close_webcam",
 ]
 
 ALL_TASK_TYPES: List[str] = [
     "open", "play", "generate_image", "content",
     "google_search", "youtube_search",
+    "gmail_inbox", "gmail_unread",
+    "calendar_list", "calendar_search", "calendar_create", "calendar_delete",
+    "drive_search", "drive_upload", "drive_list",
     "open_webcam", "close_webcam",
 ]
 
@@ -32,11 +38,13 @@ _PRIMARY_BRAIN_PROMPT = """You are the decision-maker for JARVIS. Classify the u
 Examples: "What is this?" / "What am I holding?" / "What do you see?" / "Describe what I'm showing" / "Identify this" / "What's in my hand?" / "Look at this" / "Read this" / "Can you see this?" / "Check this out"
 - Any request where the user expects you to LOOK at something through the camera → camera
 
-**task** — User wants ONLY an ACTION performed (no question to answer). Opening apps/websites, playing music/video, generating images, writing content, searching Google/YouTube, or controlling the webcam.
-Examples: "Open YouTube" / "Play despacito" / "Generate image of a cat" / "Write an essay about AI" / "Search for Python tutorials" / "Open webcam" / "Close webcam" / "Launch Netflix" / "Go to Facebook" / "Make me a picture of a sunset" / "Draw a cat" / "Create an image of mountains"
-- ANY request to open, launch, play, generate, draw, create, write, draft, compose, search, or control webcam → task
+**task** — User wants ONLY an ACTION performed (no question to answer). Opening apps/websites, playing music/video, generating images, writing content, searching Google/YouTube, checking Gmail inbox/unread emails, reading or managing Google Calendar events, searching/uploading/listing Google Drive files, or controlling the webcam.
+Examples: "Open YouTube" / "Play despacito" / "Generate image of a cat" / "Write an essay about AI" / "Search for Python tutorials" / "Check my inbox" / "Show unread emails" / "Read my latest unread email" / "mail check kar" / "mera inbox dikha" / "koi nayi mail aayi hai kya" / "What are my events today?" / "Search my birthday event" / "Create a meeting tomorrow at 5 pm" / "Delete dentist appointment" / "Search Drive for resume" / "Upload C:\\Users\\me\\Desktop\\resume.pdf to Drive folder Jobs" / "List files in Projects folder" / "Open webcam" / "Close webcam" / "Launch Netflix" / "Go to Facebook" / "Make me a picture of a sunset" / "Draw a cat" / "Create an image of mountains"
+- ANY request to open, launch, play, generate, draw, create, write, draft, compose, search, check inbox, show unread emails, read mail, check calendar, create/delete an event, search/list/upload Drive files, or control webcam → task
 - "Open webcam" / "Turn on camera" / "Close webcam" / "Turn off camera" → task
 - Image/picture/drawing requests → task (NOT camera)
+- Requests to check the user's own Gmail inbox or unread emails are task EVEN if phrased as a question
+- Requests to check today's calendar, upcoming events, birthdays, reminders, or Drive contents are task EVEN if phrased as a question
 
 **mixed** — User's message contains BOTH a conversational question AND a SPECIFIC EXPLICIT task (open/play/generate/write) in the SAME message.
 Examples: "What is machine learning? Also generate an image of a neural network" / "Tell me about Python and open YouTube" / "How does AI work? And write me an essay about it"
@@ -81,11 +89,12 @@ CRITICAL: You MUST read the conversation history to understand context.
 - "Tell me about [concept/theory]" → general (static knowledge)
 - "How to [do something]" → general (advice/tutorial)
 - "How is [something] doing?" / "How is [person]?" → realtime (needs current status)
+- "What's in my inbox?" / "Any unread emails?" / "Read my latest email" / "What are my events today?" / "Find birthday event" / "Search Drive for invoice" → task
 
 === RULES ===
 - Output EXACTLY ONE word: general, realtime, camera, task, or mixed
 - Nothing else. No explanation. Just the category name.
-- Tasks (open, play, generate, write, search, webcam) ALONE → task
+- Tasks (open, play, generate, write, search, Gmail, Calendar, Drive, webcam) ALONE → task
 - Question + task in SAME message → mixed
 - Corrections/clarifications → SAME category as the original request they are correcting
 - When in doubt between general and realtime → realtime
@@ -145,6 +154,53 @@ For multiple tasks, separate with commas: task_type1 query1, task_type2 query2
    "Search YouTube for cooking recipes" → youtube_search cooking recipes
    "Find videos about machine learning on YouTube" → youtube_search machine learning
 
+-> 'gmail_inbox' — Check recent inbox emails.
+   "Check my inbox" → gmail_inbox
+   "Show my recent emails" → gmail_inbox
+   "Aaj ka inbox batao" → gmail_inbox
+   "Mera inbox dikha" → gmail_inbox
+   "Mail check kar" → gmail_inbox
+
+-> 'gmail_unread' — Show unread emails or read latest unread email.
+   "Show unread emails" → gmail_unread
+   "Kitne unread emails hain" → gmail_unread
+   "Read my latest unread email" → gmail_unread
+   "Koi nayi mail aayi hai kya" → gmail_unread
+   "Unread mail padh ke bata" → gmail_unread
+
+-> 'calendar_list (time scope)' — Show today's or upcoming events.
+   "What are my events today" → calendar_list today
+   "Show my upcoming events" → calendar_list upcoming
+   "Aaj ke calendar events batao" → calendar_list today
+
+-> 'calendar_search (event query)' — Search a specific event, reminder, or birthday.
+   "Search my birthday event" → calendar_search birthday
+   "Find Rahul meeting in calendar" → calendar_search Rahul meeting
+   "Calendar me dentist appointment dhoondo" → calendar_search dentist appointment
+
+-> 'calendar_create (event details)' — Create a new event or reminder.
+   "Create a meeting tomorrow at 5 pm" → calendar_create meeting tomorrow at 5 pm
+   "Add doctor appointment on 5 June at 10 am" → calendar_create doctor appointment on 5 June at 10 am
+   "Kal shaam 7 baje mom birthday reminder laga do" → calendar_create mom birthday reminder tomorrow evening 7 pm
+
+-> 'calendar_delete (event query)' — Delete or remove an event.
+   "Delete my dentist appointment tomorrow" → calendar_delete dentist appointment tomorrow
+   "Remove Rahul birthday reminder" → calendar_delete Rahul birthday reminder
+
+-> 'drive_search (file query)' — Search Google Drive files by name.
+   "Search Drive for invoice" → drive_search invoice
+   "Find resume in my drive" → drive_search resume
+   "Drive me project report dhoondo" → drive_search project report
+
+-> 'drive_upload (upload request)' — Upload a local file to Google Drive.
+   "Upload C:\\Users\\me\\Desktop\\resume.pdf to Drive folder Jobs" → drive_upload C:\\Users\\me\\Desktop\\resume.pdf to folder Jobs
+   "Drive pe C:\\Work\\notes.txt upload karo" → drive_upload C:\\Work\\notes.txt
+
+-> 'drive_list (folder query)' — List files or folders from Drive root or a Drive folder.
+   "List my Drive files" → drive_list
+   "Show files in Projects folder" → drive_list Projects folder
+   "Drive ke folders dikhao" → drive_list drive folders
+
 === CONTEXTUAL CORRECTIONS ===
 When the user is correcting a previous task, use conversation history to understand the original intent:
 - "it's integer 4 not f-o-r" (after "open jarvisforeveryone.com") → open jarvis4everyone.com
@@ -155,6 +211,9 @@ When the user is correcting a previous task, use conversation history to underst
 *** Extract ONLY the relevant topic/query — REMOVE greetings (hello, hey, hi), assistant name (Jarvis), filler words (can you, please, for me), platform names (on YouTube, on Google), and command words from the query. ***
 *** "Open webcam" / "Turn on camera" / "Start camera" → open_webcam (NEVER "open webcam" as a website) ***
 *** "Close webcam" / "Turn off camera" → close_webcam ***
+*** "Check inbox" / "show unread emails" / "read my latest email" / "mail check kar" / "koi nayi mail" → gmail_inbox or gmail_unread, NOT google_search ***
+*** "today's events" / "upcoming events" / "birthday in calendar" / "create event" / "delete reminder" → calendar_list/calendar_search/calendar_create/calendar_delete, NOT google_search ***
+*** "search drive" / "find file in drive" / "upload ... to drive" / "list drive files" → drive_search/drive_upload/drive_list, NOT google_search ***
 *** For multiple tasks in one message: "Open Facebook and play Despacito" → open facebook, play Despacito ***
 *** If user says to play AND you detect YouTube context, output ONLY 'play (query)' — do NOT add a separate youtube_search. Playing IS searching YouTube. ***
 *** "Draw/Generate/Create [image description]" → generate_image (keep full visual description) ***
@@ -220,6 +279,21 @@ class BrainService:
         ("generate image of a lion and open facebook", "generate_image a lion, open facebook"),
         ("search for Python tutorials on google", "google_search Python tutorials"),
         ("search YouTube for cooking recipes", "youtube_search cooking recipes"),
+        ("check my inbox", "gmail_inbox"),
+        ("show unread emails", "gmail_unread"),
+        ("read my latest unread email", "gmail_unread"),
+        ("mail check kar", "gmail_inbox"),
+        ("mera inbox dikha", "gmail_inbox"),
+        ("koi nayi mail aayi hai kya", "gmail_unread"),
+        ("unread mail padh ke bata", "gmail_unread"),
+        ("what are my events today", "calendar_list today"),
+        ("show my upcoming calendar events", "calendar_list upcoming"),
+        ("search my birthday event", "calendar_search birthday"),
+        ("create a meeting tomorrow at 5 pm", "calendar_create meeting tomorrow at 5 pm"),
+        ("delete dentist appointment tomorrow", "calendar_delete dentist appointment tomorrow"),
+        ("search drive for resume", "drive_search resume"),
+        ("upload C:\\Users\\me\\Desktop\\resume.pdf to Drive folder Jobs", "drive_upload C:\\Users\\me\\Desktop\\resume.pdf to folder Jobs"),
+        ("list files in Projects folder", "drive_list Projects folder"),
         ("write an application for leave and play some music", "content application for leave, play some music"),
         ("hey Jarvis Teja song Dhurandhar title track can you play that on YouTube", "play Teja Dhurandhar title track"),
         ("can you open the website Jarvis for everyone", "open jarvisforeveryone.com"),
@@ -321,6 +395,13 @@ class BrainService:
                     payload["prompt"] = clean_query or user_message
                 elif task_type == "content":
                     payload["prompt"] = clean_query or user_message
+                elif task_type in (
+                    "calendar_list", "calendar_search", "calendar_create", "calendar_delete",
+                    "drive_search", "drive_list",
+                ):
+                    payload["query"] = clean_query or self._extract_task_query(task_type, user_message)
+                elif task_type == "drive_upload":
+                    payload["query"] = clean_query or user_message
                 intents.append((intent_key, payload))
 
         else:
@@ -430,17 +511,30 @@ Classify. Output EXACTLY ONE category name."""
         if self._llms:
             try:
                 from langchain_core.messages import SystemMessage, HumanMessage
+                from app.services.api_key_monitor import get_api_key_monitor
                 idx = key_index % len(self._llms)
                 llm = self._llms[idx]
+                monitor = get_api_key_monitor()
+                monitor.record_groq_attempt(idx, operation="brain_primary", source="brain_service")
+                t0_llm = time.perf_counter()
+                
                 response = llm.invoke([
                     SystemMessage(content=system_prompt),
                     HumanMessage(content=user_content),
                 ])
+                
+                latency_ms = int((time.perf_counter() - t0_llm) * 1000)
+                monitor.record_groq_success(idx, operation="brain_primary", source="brain_service", latency_ms=latency_ms)
+                
                 text = (response.content or "").strip().lower()
                 result = self._parse_single(text, valid_options, default)
                 return (result, "llm")
             
             except Exception as e:
+                if 'monitor' in locals() and 'idx' in locals():
+                    latency = int((time.perf_counter() - t0_llm) * 1000) if 't0_llm' in locals() else 0
+                    is_rl = "429" in str(e) or "rate limit" in str(e).lower()
+                    monitor.record_groq_failure(idx, operation="brain_primary", source="brain_service", error=str(e), is_rate_limit=is_rl, latency_ms=latency)
                 logger.warning("[BRAIN] LLM failed: %s. Using rule-based.", e)
 
         msg = user_content.split("Current user message:")[-1].strip()[:500] if "Current user message:" in user_content else user_content[:500]
@@ -455,17 +549,30 @@ Classify. Output EXACTLY ONE category name."""
         if self._llms:
             try:
                 from langchain_core.messages import SystemMessage, HumanMessage
+                from app.services.api_key_monitor import get_api_key_monitor
                 idx = key_index % len(self._llms)
                 llm = self._llms[idx]
+                monitor = get_api_key_monitor()
+                monitor.record_groq_attempt(idx, operation="brain_multi", source="brain_service")
+                t0_llm = time.perf_counter()
+                
                 response = llm.invoke([
                     SystemMessage(content=system_prompt),
                     HumanMessage(content=user_content),
                 ])
+                
+                latency_ms = int((time.perf_counter() - t0_llm) * 1000)
+                monitor.record_groq_success(idx, operation="brain_multi", source="brain_service", latency_ms=latency_ms)
+                
                 text = (response.content or "").strip().lower()
                 results = self._parse_multi(text, valid_options)
                 return (results, "llm")
             
             except Exception as e:
+                if 'monitor' in locals() and 'idx' in locals():
+                    latency = int((time.perf_counter() - t0_llm) * 1000) if 't0_llm' in locals() else 0
+                    is_rl = "429" in str(e) or "rate limit" in str(e).lower()
+                    monitor.record_groq_failure(idx, operation="brain_multi", source="brain_service", error=str(e), is_rate_limit=is_rl, latency_ms=latency)
                 logger.warning("[BRAIN-TASK] LLM failed: %s. Using rule-based.", e)
 
         msg = user_content.split("User task request:")[-1].strip()[:500] if "User task request:" in user_content else user_content[:500]
@@ -528,13 +635,26 @@ Classify. Output EXACTLY ONE category name."""
         if self._llms:
 
             try:
+                from app.services.api_key_monitor import get_api_key_monitor
                 idx = key_index % len(self._llms)
                 llm = self._llms[idx]
+                monitor = get_api_key_monitor()
+                monitor.record_groq_attempt(idx, operation="brain_structured", source="brain_service")
+                t0_llm = time.perf_counter()
+                
                 response = llm.invoke(messages)
+                
+                latency_ms = int((time.perf_counter() - t0_llm) * 1000)
+                monitor.record_groq_success(idx, operation="brain_structured", source="brain_service", latency_ms=latency_ms)
+                
                 text = (response.content or "").strip()
                 return (text, "llm")
             
             except Exception as e:
+                if 'monitor' in locals() and 'idx' in locals():
+                    latency = int((time.perf_counter() - t0_llm) * 1000) if 't0_llm' in locals() else 0
+                    is_rl = "429" in str(e) or "rate limit" in str(e).lower()
+                    monitor.record_groq_failure(idx, operation="brain_structured", source="brain_service", error=str(e), is_rate_limit=is_rl, latency_ms=latency)
                 logger.warning("[BRAIN-TASK] Structured LLM failed: %s. Using rule-based.", e)
 
         msg = user_content.split("User:")[-1].strip()[:500] if "User:" in user_content else user_content[:500]
@@ -553,6 +673,15 @@ Classify. Output EXACTLY ONE category name."""
             "generate_image", "generate image",
             "google_search", "google search",
             "youtube_search", "youtube search",
+            "gmail_inbox", "gmail inbox",
+            "gmail_unread", "gmail unread",
+            "calendar_list", "calendar list",
+            "calendar_search", "calendar search",
+            "calendar_create", "calendar create",
+            "calendar_delete", "calendar delete",
+            "drive_search", "drive search",
+            "drive_upload", "drive upload",
+            "drive_list", "drive list",
             "open_webcam", "close_webcam",
             "content", "open", "close", "play",
             "general", "realtime",
@@ -562,6 +691,15 @@ Classify. Output EXACTLY ONE category name."""
             "generate image": "generate_image",
             "google search": "google_search",
             "youtube search": "youtube_search",
+            "gmail inbox": "gmail_inbox",
+            "gmail unread": "gmail_unread",
+            "calendar list": "calendar_list",
+            "calendar search": "calendar_search",
+            "calendar create": "calendar_create",
+            "calendar delete": "calendar_delete",
+            "drive search": "drive_search",
+            "drive upload": "drive_upload",
+            "drive list": "drive_list",
         }
 
         decisions = []
@@ -620,6 +758,39 @@ Classify. Output EXACTLY ONE category name."""
                                   "close webcam", "turn off camera", "stop camera"]):
             return "task"
 
+        email_task_patterns = [
+            "check my inbox", "show my inbox", "open my inbox", "show unread",
+            "unread email", "unread mail", "latest email", "latest unread",
+            "recent emails", "recent email", "read my email", "read my unread email",
+            "check email", "check gmail", "gmail inbox", "mail inbox",
+            "aaj ka inbox", "unread message", "email padh", "mail padh",
+            "mail check kar", "email check kar", "mera inbox dikha", "inbox dikha",
+            "inbox bata", "gmail bata", "gmail check kar", "meri mail dikha",
+            "meri mails dikha", "new mail", "nayi mail", "koi nayi mail",
+            "mail aayi hai kya", "email aayi hai kya", "kis kis ki mail aayi",
+        ]
+        if any(x in m for x in email_task_patterns):
+            return "task"
+
+        calendar_task_patterns = [
+            "calendar event", "calendar events", "my calendar", "my events today", "what are my events",
+            "today events", "today's events",
+            "upcoming event", "upcoming events", "aaj ke events", "aaj ke calendar",
+            "birthday event", "birthday reminder", "search calendar", "find event",
+            "find birthday", "create event", "add event", "schedule event", "set reminder",
+            "delete event", "remove event", "cancel event", "calendar me", "calendar mein",
+        ]
+        if any(x in m for x in calendar_task_patterns):
+            return "task"
+
+        drive_task_patterns = [
+            "search drive", "my drive", "google drive", "drive file", "drive files",
+            "drive folder", "drive folders", "list drive", "upload to drive",
+            "drive me", "drive mein", "drive pe", "find file in drive",
+        ]
+        if any(x in m for x in drive_task_patterns):
+            return "task"
+
         task_patterns = [
             "open ", "launch ", "go to ", "visit ",
             "play ", "play the ", "play some ", "put on ",
@@ -652,6 +823,66 @@ Classify. Output EXACTLY ONE category name."""
         if any(x in m for x in ["close webcam", "turn off camera", "stop camera",
                                   "close the webcam", "stop the camera", "turn off the camera"]):
             return ["close_webcam"]
+
+        if any(x in m for x in [
+            "unread email", "unread mail", "latest unread", "read my unread email",
+            "show unread", "kitne unread", "new emails", "new email", "unread message",
+            "nayi mail", "koi nayi mail", "mail aayi hai kya", "email aayi hai kya",
+            "kis kis ki mail aayi", "unread padh", "unread mail padh", "mail padh ke bata",
+        ]):
+            return ["gmail_unread"]
+
+        if any(x in m for x in [
+            "check my inbox", "show my inbox", "open my inbox", "recent emails",
+            "recent email", "latest email", "check email", "check gmail",
+            "gmail inbox", "mail inbox", "aaj ka inbox",
+            "mail check kar", "email check kar", "mera inbox dikha", "inbox dikha",
+            "inbox bata", "gmail check kar", "meri mail dikha", "meri mails dikha",
+        ]):
+            return ["gmail_inbox"]
+
+        if any(x in m for x in [
+            "today events", "today's events", "my events today", "calendar today",
+            "aaj ke events", "aaj ke calendar", "upcoming events", "upcoming calendar",
+            "next events", "calendar schedule", "what are my events",
+        ]):
+            return ["calendar_list"]
+
+        if any(x in m for x in [
+            "search calendar", "find event", "find birthday", "birthday event",
+            "birthday reminder", "calendar me", "calendar mein", "search my event",
+        ]):
+            return ["calendar_search"]
+
+        if any(x in m for x in [
+            "create event", "add event", "schedule event", "set reminder",
+            "create reminder", "add reminder", "schedule meeting", "create meeting",
+            "calendar reminder", "birthday reminder laga", "reminder laga",
+        ]):
+            return ["calendar_create"]
+
+        if any(x in m for x in [
+            "delete event", "remove event", "cancel event", "delete reminder",
+            "remove reminder", "delete meeting", "calendar se hata", "event hata",
+        ]):
+            return ["calendar_delete"]
+
+        if any(x in m for x in [
+            "search drive", "find file in drive", "search my drive", "drive me",
+            "drive mein", "google drive me", "google drive mein",
+        ]):
+            return ["drive_search"]
+
+        if any(x in m for x in [
+            "upload to drive", "drive pe upload", "upload file to drive", "drive upload",
+        ]) or ("upload" in m and "drive" in m):
+            return ["drive_upload"]
+
+        if any(x in m for x in [
+            "list drive", "drive files", "drive folders", "my drive files",
+            "show drive", "show my drive", "list files in", "list folders in",
+        ]):
+            return ["drive_list"]
 
         if m.startswith(("open ", "launch ", "go to ", "visit ", "can you open ")) or \
            ("open" in m and any(s in m for s in ["facebook", "youtube", "google", "netflix", "gmail", "instagram", "twitter", "linkedin"])):
@@ -748,7 +979,48 @@ Classify. Output EXACTLY ONE category name."""
         elif task_type in ("google_search", "youtube_search"):
             payload["query"] = self._extract_search_query(message)
 
+        elif task_type in (
+            "calendar_list", "calendar_search", "calendar_create", "calendar_delete",
+            "drive_search", "drive_list", "drive_upload",
+        ):
+            payload["query"] = self._extract_task_query(task_type, message)
+
         return payload
+
+    def _extract_task_query(self, task_type: str, msg: str) -> str:
+        cleaned = self._strip_filler(msg)
+        patterns = {
+            "calendar_list": [
+                r"^(?:what are|show|list|tell me|check)\s+(?:my\s+)?(?:calendar\s+)?events?\s*(?:for\s+)?",
+                r"^(?:aaj ke|today(?:'s)?|upcoming|next)\s+(?:calendar\s+)?events?\s*",
+            ],
+            "calendar_search": [
+                r"^(?:search|find|look up)\s+(?:my\s+)?(?:calendar\s+)?(?:event|events|birthday|reminder)?\s*",
+                r"^(?:calendar\s+(?:me|mein)\s*)",
+            ],
+            "calendar_create": [
+                r"^(?:create|add|schedule|set|make)\s+(?:a\s+|an\s+)?(?:calendar\s+)?(?:event|reminder|meeting)?\s*",
+            ],
+            "calendar_delete": [
+                r"^(?:delete|remove|cancel)\s+(?:my\s+)?(?:calendar\s+)?(?:event|reminder|meeting)?\s*",
+            ],
+            "drive_search": [
+                r"^(?:search|find|look up)\s+(?:in\s+)?(?:my\s+)?(?:google\s+)?drive\s+(?:for\s+)?",
+                r"^(?:drive\s+(?:me|mein)\s*)",
+            ],
+            "drive_list": [
+                r"^(?:list|show|display|open)\s+(?:my\s+)?(?:google\s+)?drive\s+",
+                r"^(?:list|show)\s+(?:files|folders|items)\s+(?:in\s+)?",
+            ],
+            "drive_upload": [
+                r"^(?:upload|add)\s+",
+            ],
+        }
+        for pattern in patterns.get(task_type, []):
+            updated = re.sub(pattern, "", cleaned, flags=re.I).strip()
+            if updated and updated != cleaned:
+                cleaned = updated
+        return cleaned.strip().rstrip(".!?")
 
     def _extract_urls(self, msg: str) -> list:
 
@@ -967,4 +1239,3 @@ Classify. Output EXACTLY ONE category name."""
             
         segment = segment.rstrip(".!?,").strip()
         return segment if segment else m
-

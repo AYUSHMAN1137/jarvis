@@ -1,5 +1,5 @@
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -11,8 +11,10 @@ import logging
 import json
 import time
 import re
+import hashlib
 import base64
 import asyncio
+import queue as _queue_mod
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import edge_tts
 from app.models import ChatRequest, ChatResponse, TTSRequest
@@ -38,9 +40,9 @@ from app.services.task_manager import TaskManager
 from app.services.api_key_monitor import get_api_key_monitor
 
 from config import (
-    VECTOR_STORE_DIR, GROQ_API_KEYS, GROQ_MODEL, TAVILY_API_KEY,
+    VECTOR_STORE_DIR, GROQ_API_KEYS, GROQ_MODEL, SERPER_API_KEY,
     EMBEDDING_MODEL, CHUNK_SIZE, CHUNK_OVERLAP, MAX_CHAT_HISTORY_TURNS,
-    ASSISTANT_NAME, TTS_VOICE, TTS_RATE,
+    ASSISTANT_NAME, TTS_VOICE, TTS_RATE, VOICE_CACHE_DIR,
 )
 
 logging.basicConfig(
@@ -92,7 +94,7 @@ async def lifespan(app: FastAPI):
     logger.info("[CONFIG] Assistant name: %s", ASSISTANT_NAME)
     logger.info("[CONFIG] Groq model: %s", GROQ_MODEL)
     logger.info("[CONFIG] Groq API keys loaded: %d", len(GROQ_API_KEYS))
-    logger.info("[CONFIG] Tavily API key: %s", "configured" if TAVILY_API_KEY else "NOT SET")
+    logger.info("[CONFIG] Serper API key: %s", "configured" if SERPER_API_KEY else "NOT SET")
     logger.info("[CONFIG] Image generation: Pollinations.ai (free, no API key)")
     logger.info("[CONFIG] Embedding model: %s", EMBEDDING_MODEL)
     logger.info("[CONFIG] Chunk size: %d | Overlap: %d | Max history turns: %d",
@@ -101,14 +103,12 @@ async def lifespan(app: FastAPI):
     try:
 
         logger.info("Initializing vector store service...")
-        t0 = time.perf_counter()
         vector_store_service = VectorStoreService()
         vector_store_service.create_vector_store()
-        logger.info("[TIMING] startup_vector_store: %.3fs", time.perf_counter() - t0)
         logger.info("Initializing Groq service (general queries)...")
         groq_service = GroqService(vector_store_service)
         logger.info("Groq service initialized successfully")
-        logger.info("Initializing Realtime Groq service (with Tavily search)...")
+        logger.info("Initializing Realtime Groq service (with Serper Google Search)...")
         realtime_service = RealtimeGroqService(vector_store_service)
         logger.info("Realtime Groq service initialized successfully")
         logger.info("Initializing Brain service (Groq query classification)...")
@@ -124,20 +124,18 @@ async def lifespan(app: FastAPI):
         vision_service = VisionService()
         logger.info("Vision service initialized successfully")
         logger.info("Initializing chat service...")
-
         chat_service = ChatService(
             groq_service, realtime_service, brain_service,
             task_executor=task_executor,
             vision_service=vision_service,
             task_manager=task_manager,
         )
-
         logger.info("Chat service initialized successfully")
         logger.info("=" * 60)
         logger.info("Service Status:")
         logger.info("  - Vector Store: Ready")
         logger.info("  - Groq AI (General): Ready")
-        logger.info("  - Groq AI (Realtime): Ready")
+        logger.info("  - Groq AI (Realtime + Serper): Ready")
         logger.info("  - Brain (Unified Decision): Ready")
         logger.info("  - Task Executor: Ready")
         logger.info("  - Background Task Manager: Ready")
@@ -335,18 +333,59 @@ def _merge_short(sentences):
 
     return merged
 
-def _generate_tts_sync(text: str, voice: str, rate: str) -> bytes:
+def _tts_cache_key(text: str):
+    """Return (cleaned_text, cache_path) for a given TTS input string."""
+    cleaned = text.strip().lower()
+    cleaned = re.sub(r"[^\w\s\u0900-\u097f]", "", cleaned)  # English + Hindi Unicode
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return None, None
+    hash_key = hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
+    return cleaned, VOICE_CACHE_DIR / f"{hash_key}.mp3"
+
+
+def _generate_tts_sync(text: str, voice: str, rate: str, activity_q=None) -> bytes:
+    """Called from ThreadPoolExecutor. Checks local cache first; synthesizes online on miss.
+    Emits tts_cache_hit / tts_cache_miss_saved activity events into activity_q if provided."""
+    _, cache_path = _tts_cache_key(text)
+
+    if cache_path is None:
+        return b""
+
+    short = text[:48]
+
+    # --- Cache Hit: read instantly from SSD ---
+    if cache_path.exists():
+        try:
+            audio = cache_path.read_bytes()
+            logger.info("[TTS-CACHE] Hit  '%s'", short)
+            if activity_q is not None:
+                activity_q.put({"event": "tts_cache_hit", "sentence": short})
+            return audio
+        except Exception as exc:
+            logger.warning("[TTS-CACHE] Read error, will re-synthesize: %s", exc)
+
+    # --- Cache Miss: fetch online, save for future ---
+    logger.info("[TTS-CACHE] Miss '%s' -> fetching online...", short)
 
     async def _inner():
         communicate = edge_tts.Communicate(text=text, voice=voice, rate=rate)
         parts = []
-
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
                 parts.append(chunk["data"])
+        audio_data = b"".join(parts)
+        if audio_data:
+            try:
+                VOICE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                cache_path.write_bytes(audio_data)
+                logger.info("[TTS-CACHE] Saved '%s'", short)
+                if activity_q is not None:
+                    activity_q.put({"event": "tts_cache_miss_saved", "sentence": short})
+            except Exception as exc:
+                logger.warning("[TTS-CACHE] Save failed: %s", exc)
+        return audio_data
 
-        return b"".join(parts)
-    
     return asyncio.run(_inner())
 
 _tts_pool = ThreadPoolExecutor(max_workers=4)
@@ -358,27 +397,42 @@ def _stream_generator(session_id: str, chunk_iter, is_realtime: bool, tts_enable
     is_first = True
     audio_queue = []
     last_submit_time = time.perf_counter()
+    # Thread-safe queue for TTS cache activity events emitted from the thread pool
+    tts_activity_q = _queue_mod.Queue() if tts_enabled else None
 
     def _submit(text):
         nonlocal last_submit_time
-
         if not text or not text.strip():
             return
-        
-        audio_queue.append((_tts_pool.submit(_generate_tts_sync, text, TTS_VOICE, TTS_RATE), text))
+        audio_queue.append((
+            _tts_pool.submit(_generate_tts_sync, text, TTS_VOICE, TTS_RATE, tts_activity_q),
+            text
+        ))
         last_submit_time = time.perf_counter()
+
+    def _drain_tts_activity():
+        """Drain any pending TTS cache activity events and return as SSE strings."""
+        events = []
+        if tts_activity_q is None:
+            return events
+        while True:
+            try:
+                act = tts_activity_q.get_nowait()
+                events.append(f"data: {json.dumps({'activity': act})}\n\n")
+            except _queue_mod.Empty:
+                break
+        return events
 
     def _drain_ready():
         events = []
-
+        # First flush any pending cache-activity events
+        events.extend(_drain_tts_activity())
         while audio_queue and audio_queue[0][0].done():
             fut, sent = audio_queue.pop(0)
-
             try:
                 audio = fut.result()
                 b64 = base64.b64encode(audio).decode("ascii")
                 events.append(f"data: {json.dumps({'audio': b64, 'sentence': sent})}\n\n")
-
             except Exception as exc:
                 logger.warning("[TTS-INLINE] Failed for '%s': %s", sent[:40], exc)
         return events
@@ -642,6 +696,30 @@ async def chat_jarvis_stream(request: ChatRequest):
         logger.error("[API /chat/jarvis/stream] Error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/startup-brief/stream")
+
+async def get_startup_brief_stream(session_id: str = None):
+    if not chat_service:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    logger.info("[API /api/startup-brief/stream] Incoming | session_id=%s", session_id or "new")
+    
+    try:
+        sid = chat_service.get_or_create_session(session_id)
+        chunk_iter = chat_service.process_startup_brief_stream(sid)
+
+        return StreamingResponse(
+            _stream_generator(sid, chunk_iter, is_realtime=True, tts_enabled=True),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+    
+    except Exception as e:
+        if _is_rate_limit_error(e):
+            raise HTTPException(status_code=429, detail=RATE_LIMIT_MESSAGE)
+        logger.error("[API /api/startup-brief/stream] Error: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/tasks/{task_id}")
 
 async def get_task_status(task_id: str):
@@ -697,27 +775,93 @@ async def get_chat_history(session_id: str):
         raise HTTPException(status_code=500, detail=f"Error retrieving history: {str(e)}")
 
 @app.post("/tts")
-
 async def text_to_speech(request: TTSRequest):
-    text = request.text.strip()
+    """Standalone TTS endpoint. Checks local cache first; synthesizes + saves on miss."""
+    from fastapi.responses import FileResponse
 
+    text = request.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Text is required")
 
-    async def generate():
+    # Compute cache key — always defined, never conditional
+    _, cache_path = _tts_cache_key(text)
+
+    # --- Cache Hit: serve the file directly from SSD ---
+    if cache_path is not None and cache_path.exists():
+        logger.info("[TTS-API] Cache hit  '%s'", text[:50])
+        return FileResponse(
+            path=str(cache_path),
+            media_type="audio/mpeg",
+            headers={"Cache-Control": "no-cache"},
+        )
+
+    # --- Cache Miss: synthesize online, stream to client, save to disk ---
+    logger.info("[TTS-API] Cache miss '%s' -> synthesizing online...", text[:50])
+
+    async def generate_and_cache():
         try:
             communicate = edge_tts.Communicate(text=text, voice=TTS_VOICE, rate=TTS_RATE)
+            parts = []
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
+                    parts.append(chunk["data"])
                     yield chunk["data"]
-        except Exception as e:
-            logger.error("[TTS] Error generating speech: %s", e)
+            # After streaming is complete, persist to disk for future cache hits
+            if parts and cache_path is not None:
+                try:
+                    VOICE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                    cache_path.write_bytes(b"".join(parts))
+                    logger.info("[TTS-API] Saved to cache '%s'", text[:50])
+                except Exception as save_exc:
+                    logger.warning("[TTS-API] Cache save failed: %s", save_exc)
+        except Exception as exc:
+            logger.error("[TTS-API] Synthesis error: %s", exc)
 
     return StreamingResponse(
-        generate(),
+        generate_and_cache(),
         media_type="audio/mpeg",
         headers={"Cache-Control": "no-cache"},
     )
+
+@app.post("/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)):
+    """Transcribe audio using Groq Whisper. Fallback for Web Speech API."""
+    if not GROQ_API_KEYS:
+        raise HTTPException(status_code=503, detail="No Groq API keys configured")
+
+    audio_bytes = await file.read()
+    if not audio_bytes or len(audio_bytes) < 100:
+        raise HTTPException(status_code=400, detail="Audio file is empty or too small")
+
+    logger.info("[TRANSCRIBE] Received audio: %d bytes, type=%s", len(audio_bytes), file.content_type or "unknown")
+
+    import io
+    last_err = None
+    for i, key in enumerate(GROQ_API_KEYS):
+        try:
+            from groq import Groq
+            client = Groq(api_key=key)
+            # Wrap bytes in a file-like tuple: (filename, file_obj, content_type)
+            audio_file = ("audio.webm", io.BytesIO(audio_bytes), file.content_type or "audio/webm")
+            transcription = client.audio.transcriptions.create(
+                model="whisper-large-v3-turbo",
+                file=audio_file,
+                language="en",
+            )
+            text = (transcription.text or "").strip()
+            logger.info("[TRANSCRIBE] Success (key %d): '%s'", i, text[:100])
+            return {"text": text}
+        except Exception as e:
+            last_err = e
+            err_str = str(e).lower()
+            if "429" in str(e) or "rate limit" in err_str:
+                logger.warning("[TRANSCRIBE] Key %d rate limited, trying next...", i)
+                continue
+            logger.error("[TRANSCRIBE] Key %d error: %s", i, e)
+            continue
+
+    logger.error("[TRANSCRIBE] All keys failed. Last error: %s", last_err)
+    raise HTTPException(status_code=503, detail=f"Transcription failed: {last_err}")
 
 @app.get("/api/key-monitor")
 async def api_key_monitor_snapshot():

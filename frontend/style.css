@@ -851,10 +851,6 @@ textarea { font-family: var(--font); color: var(--text); }
     animation: micPulse 1.5s ease-in-out infinite;
 }
 
-.mic-btn.auto-listen:not(.listening) {
-    border-color: rgba(78, 205, 196, 0.4);
-    box-shadow: 0 0 0 1px rgba(78, 205, 196, 0.2);
-}
 
 .tts-btn .tts-icon-on { display: none; }
 .tts-btn.tts-active .tts-icon-off { display: none; }
@@ -895,80 +891,6 @@ textarea { font-family: var(--font); color: var(--text); }
     opacity: 1;
     visibility: visible;
     pointer-events: none;
-}
-
-.speech-widget {
-    position: fixed;
-    bottom: calc(var(--input-bar-h) + var(--panel-gap));
-    left: 50%;
-    transform: translateX(-50%) translateY(8px);
-    z-index: 15;
-    min-width: min(320px, 90vw);
-    max-width: min(560px, 95vw);
-    padding: 14px 20px;
-    border-radius: 16px;
-    background: rgba(10, 10, 28, 0.65);
-    backdrop-filter: blur(24px) saturate(1.3);
-    -webkit-backdrop-filter: blur(24px) saturate(1.3);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(124, 106, 239, 0.08);
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition: opacity 0.3s ease, visibility 0.3s ease, transform 0.3s ease;
-}
-
-.speech-widget.visible {
-    opacity: 1;
-    visibility: visible;
-    transform: translateX(-50%) translateY(0);
-    animation: speechWidgetIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-@keyframes speechWidgetIn {
-    from { opacity: 0; transform: translateX(-50%) translateY(12px); }
-    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
-
-.speech-widget-inner {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.speech-widget-label {
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: var(--accent);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.speech-widget-label::before {
-    content: '';
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--danger);
-    animation: pulse-dot 1.2s ease-in-out infinite;
-}
-
-.speech-widget-text {
-    font-size: 0.9rem;
-    line-height: 1.5;
-    color: var(--text);
-    min-height: 1.5em;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-}
-
-.speech-widget-text:empty::before {
-    content: 'Speak now...';
-    color: var(--text-muted);
-    font-style: italic;
 }
 
 .toast-container {
@@ -1151,6 +1073,14 @@ textarea { font-family: var(--font); color: var(--text); }
 .activity-item.route-chat .activity-event,
 .activity-item.route-chat .activity-step { color: var(--accent); }
 .activity-item.route-chat .activity-step { background: rgba(124, 106, 239, 0.2); }
+
+/* TTS Cache: hit = instant from disk (emerald green) */
+.activity-item.route-tts-hit .activity-event { color: #34d399; }
+.activity-item.route-tts-hit { border-left-color: rgba(52, 211, 153, 0.5); }
+
+/* TTS Cache: miss + saved = downloaded + cached (sky blue) */
+.activity-item.route-tts-saved .activity-event { color: #38bdf8; }
+.activity-item.route-tts-saved { border-left-color: rgba(56, 189, 248, 0.5); }
 
 .activity-item.activity-sub {
     padding: 12px 14px;

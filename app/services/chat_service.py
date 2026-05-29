@@ -68,6 +68,57 @@ class ChatService:
         self.sessions: Dict[str, List[ChatMessage]] = {}
         self._save_lock = threading.Lock()
 
+    def _get_startup_email_line(self) -> str:
+        gmail_service = getattr(self.task_executor, "gmail_service", None) if self.task_executor else None
+
+        if not gmail_service:
+            return "Your email status is unavailable right now."
+
+        try:
+            unread_count = gmail_service.get_unread_count(allow_interactive=False)
+            if unread_count == 0:
+                return "Your inbox is clear, with no unread emails pending."
+            if unread_count == 1:
+                return "You currently have 1 unread email waiting."
+            return f"You currently have {unread_count} unread emails waiting."
+        except Exception as e:
+            logger.info("[STARTUP-STREAM] Email status unavailable: %s", e)
+            return "Your email status is unavailable right now."
+
+    def _get_startup_calendar_line(self) -> str:
+        calendar_service = getattr(self.task_executor, "calendar_service", None) if self.task_executor else None
+
+        if not calendar_service:
+            return "Your calendar status is unavailable right now."
+
+        try:
+            today_count = calendar_service.get_today_event_count(allow_interactive=False)
+            if today_count == 0:
+                return "Your calendar is clear for today."
+            if today_count == 1:
+                return "You have 1 event scheduled for today."
+            return f"You have {today_count} events scheduled for today."
+        except Exception as e:
+            logger.info("[STARTUP-STREAM] Calendar status unavailable: %s", e)
+            return "Your calendar status is unavailable right now."
+
+    def _get_startup_drive_line(self) -> str:
+        drive_service = getattr(self.task_executor, "drive_service", None) if self.task_executor else None
+
+        if not drive_service:
+            return "Your Drive status is unavailable right now."
+
+        try:
+            root_item_count = drive_service.get_root_item_count(allow_interactive=False)
+            if root_item_count == 0:
+                return "Your Drive root folder is currently empty."
+            if root_item_count == 1:
+                return "You currently have 1 item in your Drive root folder."
+            return f"You currently have {root_item_count} items in your Drive root folder."
+        except Exception as e:
+            logger.info("[STARTUP-STREAM] Drive status unavailable: %s", e)
+            return "Your Drive status is unavailable right now."
+
     def load_session_from_disk(self, session_id: str) -> bool:
 
         safe_session_id = session_id.replace("-", "").replace(" ", "_")
@@ -540,6 +591,63 @@ class ChatService:
         elapsed_jarvis = time.perf_counter() - t0_jarvis
         logger.info("[JARVIS-STREAM] %s flow complete in %.2fs | chunks: %d", route_name, elapsed_jarvis, chunk_count)
 
+    def process_startup_brief_stream(
+        self, session_id: str
+    ) -> Iterator[Union[str, Dict[str, Any]]]:
+        
+        if not self.realtime_service:
+            raise ValueError("Realtime service is not initialized.")
+            
+        logger.info("[STARTUP-STREAM] Session: %s", session_id[:12])
+        email_line = self._get_startup_email_line()
+        calendar_line = self._get_startup_calendar_line()
+        drive_line = self._get_startup_drive_line()
+        
+        prompt = (
+            "Please search the current weather and give me a 7-sentence startup briefing in English.\n"
+            "Line 1: Good morning/afternoon/evening, Ayush. (Pick based on current time)\n"
+            "Line 2: Today is [Day], [Date].\n"
+            "Line 3: Short weather summary for morning, afternoon, evening.\n"
+            "Line 4: One sentence of advice based on weather.\n"
+            f"Line 5: Say exactly this email update: {email_line}\n"
+            f"Line 6: Say exactly this calendar update: {calendar_line}\n"
+            f"Line 7: Say exactly this Drive update: {drive_line}\n"
+            "Output ONLY the 7 sentences, no introductory or concluding text. English only."
+        )
+        
+        self.add_message(session_id, "user", prompt)
+        self.add_message(session_id, "assistant", "")
+        
+        yield {"_activity": {"event": "routing", "route": "startup"}}
+        yield {"_activity": {"event": "streaming_started", "route": "startup"}}
+
+        from app.utils.key_rotation import get_next_key_pair
+        from config import GROQ_API_KEYS
+        _, chat_idx = get_next_key_pair(len(GROQ_API_KEYS), need_brain=False)
+        
+        chunk_count = 0
+        t0 = time.perf_counter()
+
+        try:
+            for chunk in self.realtime_service.stream_response(
+                question=prompt, chat_history=[], key_start_index=chat_idx
+            ):
+                if isinstance(chunk, dict):
+                    yield chunk
+                    continue
+
+                if chunk_count == 0:
+                    elapsed_ms = int((time.perf_counter() - t0) * 1000)
+                    yield {"_activity": {"event": "first_chunk", "route": "startup", "elapsed_ms": elapsed_ms}}
+                
+                self.sessions[session_id][-1].content += chunk
+                chunk_count += 1
+                yield chunk
+
+        finally:
+            self.save_chat_session(session_id)
+            logger.info("[STARTUP-STREAM] Completed | Chunks: %d", chunk_count)
+
     def save_chat_session(self, session_id: str, log_timing: bool = True):
 
         if session_id not in self.sessions or not self.sessions[session_id]:
@@ -581,4 +689,3 @@ class ChatService:
                 return
             
         logger.error("Failed to save chat session %s after %d retries: %s", session_id, max_retries, last_exc)
-

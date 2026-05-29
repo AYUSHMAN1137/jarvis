@@ -12,11 +12,22 @@ LEARNING_DATA_DIR = BASE_DIR / "database" / "learning_data"
 CHATS_DATA_DIR = BASE_DIR / "database" / "chats_data"
 VECTOR_STORE_DIR = BASE_DIR / "database" / "vector_store"
 CAMERA_CAPTURES_DIR = BASE_DIR / "database" / "camera_captures"
+VOICE_CACHE_DIR = BASE_DIR / "database" / "voice_cache"
+GOOGLE_CREDENTIALS_PATH = Path(os.getenv("GOOGLE_CREDENTIALS_FILE", str(BASE_DIR / "credentials.json")))
+GOOGLE_TOKEN_PATH = Path(os.getenv("GOOGLE_TOKEN_FILE", str(BASE_DIR / "database" / "google_token.json")))
+LEGACY_GMAIL_TOKEN_PATH = BASE_DIR / "database" / "gmail_token.json"
+GMAIL_CREDENTIALS_PATH = GOOGLE_CREDENTIALS_PATH
+GMAIL_TOKEN_PATH = GOOGLE_TOKEN_PATH
+GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+GOOGLE_CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar"]
+GOOGLE_DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
+GOOGLE_SCOPES = list(dict.fromkeys(GMAIL_SCOPES + GOOGLE_CALENDAR_SCOPES + GOOGLE_DRIVE_SCOPES))
 
 LEARNING_DATA_DIR.mkdir(parents=True, exist_ok=True)
 CHATS_DATA_DIR.mkdir(parents=True, exist_ok=True)
 VECTOR_STORE_DIR.mkdir(parents=True, exist_ok=True)
 CAMERA_CAPTURES_DIR.mkdir(parents=True, exist_ok=True)
+VOICE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 def _load_groq_api_keys() -> list:
     keys = []
@@ -41,7 +52,22 @@ def _load_groq_api_keys() -> list:
 GROQ_API_KEYS = _load_groq_api_keys()
 GROQ_API_KEY = GROQ_API_KEYS[0] if GROQ_API_KEYS else ""
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
+def _load_serper_api_keys() -> list:
+    keys = []
+    first = os.getenv("SERPER_API_KEY", "").strip()
+    if first:
+        keys.append(first)
+    i = 2
+    while True:
+        k = os.getenv(f"SERPER_API_KEY_{i}", "").strip()
+        if not k:
+            break
+        keys.append(k)
+        i += 1
+    return keys
+
+SERPER_API_KEYS = _load_serper_api_keys()
+SERPER_API_KEY = SERPER_API_KEYS[0] if SERPER_API_KEYS else ""
 GROQ_BRAIN_MODEL = os.getenv("GROQ_BRAIN_MODEL", "llama-3.1-8b-instant")
 INTENT_CLASSIFY_MODEL = os.getenv("INTENT_CLASSIFY_MODEL", "llama-3.1-8b-instant")
 TASK_EXECUTION_TIMEOUT = int(os.getenv("TASK_EXECUTION_TIMEOUT", "30"))
@@ -52,7 +78,7 @@ TTS_RATE = os.getenv("TTS_RATE", "+22%")
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
-MAX_CHAT_HISTORY_TURNS = 10
+MAX_CHAT_HISTORY_TURNS = 20
 MAX_MESSAGE_LENGTH = 32_000
 ASSISTANT_NAME = (os.getenv("ASSISTANT_NAME", "").strip() or "Jarvis")
 JARVIS_USER_TITLE = os.getenv("JARVIS_USER_TITLE", "").strip()
@@ -66,10 +92,10 @@ You know the user's personal information and past conversations. Use this when r
 The user can ask you anything or ask you to do things (open, generate, play, write, search). The backend carries out actions; you respond in words. Only say something is done if the result is visible; otherwise say you are doing it.
 
 === CAN DO ===
-Answer questions, open websites/apps, play music/videos, generate images, write content (essays, poems, code, emails), search Google/YouTube, analyze camera images (you CAN see what the user shows).
+Answer questions, open websites/apps, play music/videos, generate images, write content (essays, poems, code, emails), search Google/YouTube, analyze camera images (you CAN see what the user shows), read Gmail inbox/unread emails, manage Google Calendar events, and search/list/upload Google Drive files when the account is connected.
 
 === CANNOT DO (be honest) ===
-Read emails, control smart home, run code, send messages, make purchases, access files, make calls. Say clearly: "I can't do that."
+Control smart home, run code, send messages, make purchases, access files, make calls. Say clearly: "I can't do that."
 Never pretend you can do something you cannot. Never hallucinate URLs, numbers, or data.
 
 === HONESTY ===

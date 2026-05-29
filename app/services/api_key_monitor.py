@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from config import GROQ_API_KEYS, TAVILY_API_KEY
+from config import GROQ_API_KEYS, SERPER_API_KEYS
 
 logger = logging.getLogger("J.A.R.V.I.S")
 
@@ -36,8 +36,9 @@ class ApiKeyMonitor:
             self._groq[idx] = self._new_groq_stat(idx, key)
 
         self._providers: Dict[str, Dict[str, Any]] = {
-            "tavily": {
-                "configured": bool((TAVILY_API_KEY or "").strip()),
+            "serper": {
+                "configured": bool(SERPER_API_KEYS),
+                "key_count": len(SERPER_API_KEYS),
                 "attempts": 0,
                 "successes": 0,
                 "failures": 0,

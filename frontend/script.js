@@ -6,21 +6,22 @@ const API = (typeof window !== 'undefined' && window.location.origin)
 let sessionId = null;
 let currentMode = 'jarvis';
 let isStreaming = false;
-let isListening = false;
 let camStream = null;
-let autoListenMode = false;
-const SPEECH_ERROR_MAX_RETRIES = 3;
-let speechErrorRetryCount = 0;
-const SPEECH_SEND_DELAY_MS = 500;
-const SPEECH_RESTART_DELAY_MS = 700;
-let speechSendTimeout = null;
-let pendingSendTranscript = null;
-let safariVoiceHintShown = false;
+
+/* ── Push-to-Talk (Ctrl+Shift) state ── */
+let isRecording = false;
+let currentTranscript = '';
+let finalReceived = false;
+let pttSafetyTimer = null;
+let ctrlHeld = false;
+let shiftHeld = false;
+let pttSendDone = false;
+let pttVoiceSource = null;  // 'web-speech' | 'whisper' | null
 let orb = null;
 let recognition = null;
 let ttsPlayer = null;
 const SETTINGS_KEY = 'jarvis_settings';
-const DEFAULT_SETTINGS = { autoOpenActivity: true, autoOpenSearchResults: true, thinkingSounds: true, voiceInterrupt: true };
+const DEFAULT_SETTINGS = { autoOpenActivity: true, autoOpenSearchResults: true, thinkingSounds: true };
 const PRE_STARTER_FILES = ['starter_1', 'starter_2', 'starter_3', 'starter_4', 'starter_5', 'starter_6', 'starter_7', 'starter_8', 'starter_9', 'starter_10'];
 let PRE_STARTER_CACHE = {};
 let settings = { ...DEFAULT_SETTINGS };
@@ -49,8 +50,6 @@ const activityToggle      = $('activity-toggle');
 const activityClose       = $('activity-close');
 const activityList        = $('activity-list');
 const panelOverlay        = $('panel-overlay');
-const speechWidget        = $('speech-widget');
-const speechWidgetText    = $('speech-widget-text');
 const settingsBtn         = $('settings-btn');
 const monitorBtn          = $('monitor-btn');
 const camBtn              = $('cam-btn');
@@ -67,7 +66,6 @@ const settingsClose       = $('settings-close');
 const toggleAutoActivity  = $('toggle-auto-activity');
 const toggleAutoSearch    = $('toggle-auto-search');
 const toggleThinkingSounds = $('toggle-thinking-sounds');
-const toggleVoiceInterrupt = $('toggle-voice-interrupt');
 const toastContainer     = $('toast-container');
 
 class PreStarterPlayer {
@@ -147,6 +145,7 @@ class TTSPlayer {
         if (ttsBtn) ttsBtn.classList.remove('tts-speaking');
         if (orbContainer) orbContainer.classList.remove('speaking');
         if (orb) orb.setActive(false);
+
         if (typeof this.onPlaybackComplete === 'function') this.onPlaybackComplete();
     }
     reset() {
@@ -162,6 +161,7 @@ class TTSPlayer {
         if (ttsBtn) ttsBtn.classList.add('tts-speaking');
         if (orbContainer) orbContainer.classList.add('speaking');
         if (orb) orb.setActive(true);
+
         while (this.queue.length > 0) {
             if (this.stopped || myId !== this._loopId) break;
             const b64 = this.queue.shift();
@@ -179,6 +179,7 @@ class TTSPlayer {
         if (ttsBtn) ttsBtn.classList.remove('tts-speaking');
         if (orbContainer) orbContainer.classList.remove('speaking');
         if (orb) orb.setActive(false);
+
         if (typeof this.onPlaybackComplete === 'function') this.onPlaybackComplete();
     }
     _playB64(b64) {
@@ -200,17 +201,69 @@ function init() {
     }
     loadSettings();
     ttsPlayer = new TTSPlayer();
-    ttsPlayer.onPlaybackComplete = maybeRestartListening;
     if (ttsBtn) ttsBtn.classList.add('tts-active');
     setGreeting();
     initOrb();
-    initSpeech();
+    initPushToTalk();
     preloadStarterAudio();
     preStarterPlayer = new PreStarterPlayer();
     checkHealth();
+    playStartupBrief();
     bindEvents();
     setMode(currentMode);
     autoResizeInput();
+}
+
+let startupBriefPlayed = false;
+
+function playStartupBrief() {
+    if (startupBriefPlayed) return;
+    startupBriefPlayed = true;
+
+    // Attach unlock to first interaction to bypass autoplay restrictions
+    const unlockAndPlay = () => {
+        if (ttsPlayer && ttsPlayer.unlock) {
+            ttsPlayer.unlock();
+        }
+        document.removeEventListener('click', unlockAndPlay);
+        document.removeEventListener('keydown', unlockAndPlay);
+    };
+    document.addEventListener('click', unlockAndPlay);
+    document.addEventListener('keydown', unlockAndPlay);
+
+    fetch(`${API}/api/startup-brief/stream`)
+        .then(response => {
+            if (!response.ok) throw new Error('Startup brief fetch failed');
+            
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            function readStream() {
+                reader.read().then(({ done, value }) => {
+                    if (done) return;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.substring(6));
+                                if (data.audio && ttsPlayer) {
+                                    ttsPlayer.enqueue(data.audio);
+                                }
+                            } catch (e) {
+                                console.warn('Failed to parse SSE data', e);
+                            }
+                        }
+                    }
+                    readStream();
+                }).catch(err => console.error("Error reading startup stream:", err));
+            }
+            readStream();
+        })
+        .catch(err => console.error('Failed to start startup brief:', err));
 }
 
 async function preloadStarterAudio() {
@@ -241,7 +294,7 @@ function loadSettings() {
         if (toggleAutoActivity) toggleAutoActivity.checked = settings.autoOpenActivity;
         if (toggleAutoSearch) toggleAutoSearch.checked = settings.autoOpenSearchResults;
         if (toggleThinkingSounds) toggleThinkingSounds.checked = settings.thinkingSounds;
-        if (toggleVoiceInterrupt) toggleVoiceInterrupt.checked = settings.voiceInterrupt;
+
     } catch (_) {}
 }
 
@@ -272,132 +325,299 @@ function initOrb() {
     } catch (e) { console.warn('Orb init failed:', e); }
 }
 
-function isSafariOrIOS() {
-    if (typeof navigator === 'undefined') return false;
-    const ua = navigator.userAgent || '';
-    return /iPad|iPhone|iPod/.test(ua) ||
-        (navigator.vendor && navigator.vendor.indexOf('Apple') > -1) ||
-        (/Safari/.test(ua) && !/Chrome|Chromium|CriOS/.test(ua));
+
+/* ══════════════════════════════════════════════════════════════════
+   Push-to-Talk  (Ctrl+Shift hold → record → release → send)
+   HYBRID: MediaRecorder (reliable) + Web Speech API (live preview)
+   ══════════════════════════════════════════════════════════════════ */
+
+/** Shared AbortController so PTT can abort an in-flight stream */
+let pttStreamController = null;
+let mediaRecorder = null;
+let audioChunks = [];
+let micStream = null;
+
+function initPushToTalk() {
+    // ── Keyboard event listeners ──
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Control') ctrlHeld = true;
+        if (e.key === 'Shift') shiftHeld = true;
+
+        if (ctrlHeld && shiftHeld && !isRecording) {
+            e.preventDefault();
+            pttStartRecording();
+        }
+        if (ctrlHeld && shiftHeld) {
+            e.preventDefault();
+        }
+    });
+
+    document.addEventListener('keyup', (e) => {
+        if (e.key === 'Control') ctrlHeld = false;
+        if (e.key === 'Shift') shiftHeld = false;
+
+        if ((!ctrlHeld || !shiftHeld) && isRecording) {
+            pttStopRecording();
+        }
+    });
+
+    window.addEventListener('blur', () => {
+        ctrlHeld = false;
+        shiftHeld = false;
+        if (isRecording) pttStopRecording();
+    });
+
+    if (micBtn) micBtn.title = 'Voice input — hold Ctrl+Shift to speak';
+    console.log('[PTT] Hybrid Push-to-Talk initialized (MediaRecorder + Web Speech API)');
 }
 
-function initSpeech() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { micBtn.title = 'Speech not supported in this browser'; return; }
-    recognition = new SR();
-    const safariMode = isSafariOrIOS();
-    recognition.continuous = false;
-    recognition.interimResults = !safariMode;
-    recognition.maxAlternatives = 1;
-    recognition.lang = 'en-US';
-    recognition.onresult = e => {
-        if (!e.results || e.results.length === 0) return;
-        const last = e.results[e.results.length - 1];
-        const transcript = (last && last[0]) ? last[0].transcript.trim() : '';
-        const isFinal = last && last.isFinal;
-        if (speechWidgetText) speechWidgetText.textContent = transcript;
-        if (speechWidget) speechWidget.classList.add('visible');
-        if (settings.voiceInterrupt && ttsPlayer && ttsPlayer.playing && transcript.length > 0) {
-            ttsPlayer.stop();
-            ttsPlayer.stopped = false;
-        }
-        if (isFinal && transcript) {
-            pendingSendTranscript = transcript;
-            clearTimeout(speechSendTimeout);
-            speechSendTimeout = setTimeout(() => {
-                if (pendingSendTranscript) {
-                    sendMessage(pendingSendTranscript);
-                    pendingSendTranscript = null;
-                }
-                speechSendTimeout = null;
-                stopListening();
-            }, SPEECH_SEND_DELAY_MS);
-        } else if (!isFinal) {
-            pendingSendTranscript = null;
-            clearTimeout(speechSendTimeout);
-            speechSendTimeout = null;
-        }
-    };
+/** Start BOTH MediaRecorder and Web Speech API in parallel */
+async function pttStartRecording() {
+    if (isRecording) return;
 
-    recognition.onstart = () => { speechErrorRetryCount = 0; };
-    recognition.onerror = e => {
-        stopListening();
-        const msg = (e && e.error) ? String(e.error) : '';
-        const isPermissionDenied = /denied|not-allowed|permission/i.test(msg);
-        if (isPermissionDenied && micBtn) {
-            micBtn.title = 'Microphone access denied. Allow in browser settings.';
-            speechErrorRetryCount = SPEECH_ERROR_MAX_RETRIES;
-        }
-        if (autoListenMode && !isStreaming && speechErrorRetryCount < SPEECH_ERROR_MAX_RETRIES) {
-            speechErrorRetryCount++;
-            setTimeout(() => maybeRestartListening(), SPEECH_RESTART_DELAY_MS);
-        } else if (speechErrorRetryCount >= SPEECH_ERROR_MAX_RETRIES && micBtn) {
-            micBtn.title = 'Voice input — click to try again';
-        }
-    };
-
-    recognition.onend = () => {
-        if (pendingSendTranscript) {
-            clearTimeout(speechSendTimeout);
-            speechSendTimeout = null;
-            sendMessage(pendingSendTranscript);
-            pendingSendTranscript = null;
-        } else {
-            clearTimeout(speechSendTimeout);
-            speechSendTimeout = null;
-        }
-        if (isListening) stopListening();
-        maybeRestartListening();
-    };
-}
-
-function startListening() {
-    if (!recognition || isStreaming || isListening) return;
-    if (isSafariOrIOS() && !safariVoiceHintShown) {
-        showToast('Voice works best in Chrome. Safari has limited support.');
-        safariVoiceHintShown = true;
+    // ── Interrupt streaming if active ──
+    if (isStreaming && pttStreamController) {
+        console.log('[PTT] Interrupting active stream...');
+        pttStreamController.abort();
     }
-    isListening = true;
-    pendingSendTranscript = null;
-    clearTimeout(speechSendTimeout);
-    speechSendTimeout = null;
-    if (micBtn) micBtn.classList.add('listening');
-    if (speechWidget) speechWidget.classList.add('visible');
-    if (speechWidgetText) speechWidgetText.textContent = '';
+
+    // ── Interrupt TTS if playing ──
+    if (ttsPlayer && ttsPlayer.playing) {
+        ttsPlayer.stop();
+        ttsPlayer.stopped = false;
+    }
+    // Stop pre-starter audio
+    if (preStarterPlayer && preStarterPlayer.audio && !preStarterPlayer.audio.paused) {
+        preStarterPlayer.audio.pause();
+        preStarterPlayer.audio.currentTime = 0;
+    }
+
+    isRecording = true;
+    currentTranscript = '';
+    finalReceived = false;
+    pttSendDone = false;
+    audioChunks = [];
+    clearTimeout(pttSafetyTimer);
+
+    if (messageInput) {
+        messageInput.value = '';
+        messageInput.disabled = false;
+    }
+    pttUpdateUI(true);
+
+    // ── 1. Start MediaRecorder (RELIABLE — captures from this exact moment) ──
     try {
-        recognition.start();
+        // Always get a fresh stream — this way we release the mic as soon as recording stops
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(micStream, {
+            mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                ? 'audio/webm;codecs=opus'
+                : 'audio/webm'
+        });
+        mediaRecorder.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) audioChunks.push(e.data);
+        };
+        mediaRecorder.start(100); // collect chunks every 100ms
+        console.log('[PTT] MediaRecorder started');
     } catch (err) {
-        isListening = false;
-        if (micBtn) micBtn.classList.remove('listening');
-        if (speechWidget) speechWidget.classList.remove('visible');
-        if (isSafariOrIOS()) showToast('Tap the mic to continue voice input.');
+        console.warn('[PTT] MediaRecorder failed:', err);
+        showToast('Microphone access denied. Please allow in browser settings.');
+        isRecording = false;
+        pttUpdateUI(false);
+        return;
+    }
+
+    // ── 2. Start Web Speech API (BONUS — live preview, might fail) ──
+    try {
+        // Kill previous instance
+        if (recognition) {
+            try { recognition.onresult = null; recognition.onerror = null; recognition.onend = null; } catch (_) {}
+            try { recognition.abort(); } catch (_) {}
+        }
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SR) {
+            recognition = new SR();
+            recognition.continuous = false;  // single utterance — prevents duplicate results
+            recognition.interimResults = true;
+            recognition.maxAlternatives = 1;
+            recognition.lang = 'en-IN';
+
+            recognition.onresult = (e) => {
+                if (pttSendDone) return;  // already sent, ignore further results
+                if (!e.results || e.results.length === 0) return;
+                let full = '';
+                for (let i = 0; i < e.results.length; i++) {
+                    full += e.results[i][0].transcript;
+                }
+                currentTranscript = full;
+                const latest = e.results[e.results.length - 1];
+                if (latest.isFinal) {
+                    finalReceived = true;
+                    if (!isRecording && !pttSendDone) {
+                        pttSendTranscript();
+                    }
+                }
+                // Live preview
+                if (messageInput && !pttSendDone) messageInput.value = currentTranscript;
+            };
+            recognition.onerror = () => {}; // silent — MediaRecorder is the backup
+            recognition.onend = () => {
+                if (!pttSendDone && currentTranscript.trim() && !isRecording) {
+                    pttSendTranscript();
+                }
+            };
+            recognition.start();
+            console.log('[PTT] Web Speech API started (bonus preview)');
+        }
+    } catch (_) {
+        console.log('[PTT] Web Speech API unavailable — MediaRecorder will handle it');
     }
 }
 
-function stopListening() {
-    clearTimeout(speechSendTimeout);
-    speechSendTimeout = null;
-    pendingSendTranscript = null;
-    isListening = false;
-    if (micBtn) micBtn.classList.remove('listening');
-    if (speechWidget) speechWidget.classList.remove('visible');
-    if (speechWidgetText) speechWidgetText.textContent = '';
-    try { recognition.stop(); } catch (_) {}
-}
+function pttStopRecording() {
+    if (!isRecording) return;
+    isRecording = false;
+    pttUpdateUI(false);
 
-function maybeRestartListening() {
-    if (!autoListenMode || !recognition) return;
-    if (isStreaming) return;
+    // Stop MediaRecorder — collect final chunk
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        console.log('[PTT] MediaRecorder stopped');
+    }
 
-    const ttsActive = ttsPlayer && (ttsPlayer.playing || ttsPlayer.queue.length > 0);
-    if (ttsActive && !settings.voiceInterrupt) return;
+    // Release mic stream so OS mic indicator disappears immediately
+    if (micStream) {
+        micStream.getTracks().forEach(t => t.stop());
+        micStream = null;
+    }
 
-    const delay = ttsActive ? 150 : SPEECH_RESTART_DELAY_MS;
-    setTimeout(() => {
-        if (autoListenMode && !isStreaming && !isListening && recognition) {
-            startListening();
+    // Don't stop Web Speech API immediately — let it finish processing
+    // (but it's just a bonus, MediaRecorder is the reliable backup)
+
+    // If Web Speech already has a final result → send instantly (fast path)
+    if (finalReceived && currentTranscript.trim() && !pttSendDone) {
+        console.log('[PTT] Fast path: Web Speech has final text, sending...');
+        pttSendTranscript();
+        return;
+    }
+
+    // Show processing hint
+    if (messageInput && !currentTranscript.trim()) {
+        messageInput.placeholder = 'Processing audio...';
+    }
+
+    // Wait 1.5s for Web Speech API to produce final text
+    // If it doesn't → fall back to MediaRecorder + backend Whisper
+    pttSafetyTimer = setTimeout(() => {
+        if (pttSendDone) return;
+
+        // Stop Web Speech API
+        if (recognition) {
+            try { recognition.stop(); } catch (_) {}
         }
-    }, delay);
+
+        if (currentTranscript.trim()) {
+            // Web Speech produced something (even interim) — use it
+            console.log('[PTT] Using Web Speech interim text');
+            pttSendTranscript();
+        } else {
+            // Web Speech failed completely → send audio to backend Whisper
+            console.log('[PTT] Web Speech failed — falling back to Whisper...');
+            pttSendAudioToBackend();
+        }
+    }, 1500);
 }
+
+/** FAST PATH: Web Speech API got the text — send immediately */
+function pttSendTranscript() {
+    clearTimeout(pttSafetyTimer);
+    if (pttSendDone) return;
+    pttSendDone = true;
+
+    // Stop everything
+    if (recognition) { try { recognition.stop(); } catch (_) {} }
+
+    const text = currentTranscript.trim();
+    currentTranscript = '';
+    finalReceived = false;
+
+    if (messageInput) {
+        messageInput.placeholder = 'Message Jarvis...';
+        messageInput.value = '';
+    }
+
+    if (!text) return;
+
+    console.log('[PTT] Sending (Web Speech):', text.substring(0, 80));
+    pttVoiceSource = 'web-speech';
+    sendMessage(text);
+}
+
+/** FALLBACK PATH: Send recorded audio blob to backend for Whisper transcription */
+async function pttSendAudioToBackend() {
+    if (pttSendDone) return;
+    pttSendDone = true;
+
+    if (messageInput) messageInput.placeholder = 'Transcribing...';
+
+    // Build audio blob from recorded chunks
+    const blob = new Blob(audioChunks, { type: mediaRecorder?.mimeType || 'audio/webm' });
+    audioChunks = [];
+
+    if (blob.size < 100) {
+        console.log('[PTT] Audio too small, ignoring');
+        if (messageInput) messageInput.placeholder = 'Message Jarvis...';
+        return;
+    }
+
+    console.log('[PTT] Sending audio to backend: %d bytes', blob.size);
+
+    try {
+        const formData = new FormData();
+        formData.append('file', blob, 'audio.webm');
+
+        const res = await fetch(`${API}/transcribe`, {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!res.ok) {
+            throw new Error(`Transcription failed: HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        const text = (data.text || '').trim();
+
+        if (messageInput) {
+            messageInput.placeholder = 'Message Jarvis...';
+            messageInput.value = '';
+        }
+
+        if (!text) {
+            console.log('[PTT] Whisper returned empty text');
+            showToast('Could not understand audio. Try speaking louder.');
+            return;
+        }
+
+        console.log('[PTT] Sending (Whisper):', text.substring(0, 80));
+        pttVoiceSource = 'whisper';
+        sendMessage(text);
+    } catch (err) {
+        console.error('[PTT] Backend transcription failed:', err);
+        showToast('Transcription failed. Please try again.');
+        if (messageInput) messageInput.placeholder = 'Message Jarvis...';
+    }
+}
+
+function pttUpdateUI(active) {
+    if (!micBtn) return;
+    if (active) {
+        micBtn.classList.add('listening');
+    } else {
+        micBtn.classList.remove('listening');
+    }
+}
+
 
 const CAM_BYPASS_TOKEN = 'TTCAMTOKENTT';
 const CAMERA_QUERY_PATTERNS = [
@@ -894,19 +1114,7 @@ function bindEvents() {
     });
     initCameraPanel();
     if (micBtn) micBtn.addEventListener('click', () => {
-        if (isListening) {
-            autoListenMode = false;
-            stopListening();
-            if (micBtn) micBtn.classList.remove('auto-listen');
-        } else {
-            autoListenMode = true;
-            speechErrorRetryCount = 0;
-            if (micBtn) {
-                micBtn.classList.add('auto-listen');
-                micBtn.title = 'Voice input — click to stop auto-listen';
-            }
-            startListening();
-        }
+        showToast('Hold Ctrl+Shift to speak', 3000);
     });
     if (ttsBtn) ttsBtn.addEventListener('click', () => {
         if (ttsPlayer) ttsPlayer.enabled = !ttsPlayer.enabled;
@@ -971,12 +1179,7 @@ function bindEvents() {
             saveSettings();
         });
     }
-    if (toggleVoiceInterrupt) {
-        toggleVoiceInterrupt.addEventListener('change', () => {
-            settings.voiceInterrupt = toggleVoiceInterrupt.checked;
-            saveSettings();
-        });
-    }
+
 }
 
 function autoResizeInput() {
@@ -1000,6 +1203,7 @@ function setMode(mode) {
 }
 
 function newChat() {
+    if (isRecording) pttStopRecording();
     if (ttsPlayer) ttsPlayer.stop();
     if (camStream) stopCamera();
     sessionId = null;
@@ -1121,21 +1325,24 @@ function escapeAttr(str) {
 }
 
 const ACTIVITY_STEPS = {
-    query_detected:      { step: 1, label: 'Query detected' },
-    decision:            { step: 2, label: 'Primary Brain' },
-    intent_classified:   { step: 3, label: 'Task Brain' },
-    routing:             { step: 4, label: 'Route selected' },
-    tasks_executing:     { step: 0, label: 'Executing tasks' },
-    tasks_completed:     { step: 0, label: 'Tasks completed' },
-    actions_emitted:     { step: 0, label: 'Actions sent' },
-    vision_analyzing:    { step: 0, label: 'Analyzing image' },
-    streaming_started:   { step: 5, label: 'Streaming response' },
-    extracting_query:    { step: 0, label: 'Extracting query' },
-    searching_web:       { step: 0, label: 'Searching web' },
-    search_completed:    { step: 0, label: 'Search completed' },
-    context_retrieved:   { step: 0, label: 'Context retrieved' },
+    voice_input:           { step: 0, label: 'Voice captured' },
+    query_detected:        { step: 1, label: 'Query detected' },
+    decision:              { step: 2, label: 'Brain analysis' },
+    intent_classified:     { step: 0, label: 'Task intent' },
+    routing:               { step: 3, label: 'Route selected' },
+    context_retrieved:     { step: 0, label: 'Context loaded' },
+    extracting_query:      { step: 0, label: 'Extracting query' },
+    searching_web:         { step: 0, label: 'Searching web' },
+    search_completed:      { step: 0, label: 'Search done' },
+    vision_analyzing:      { step: 0, label: 'Analyzing image' },
+    tasks_executing:       { step: 0, label: 'Running tasks' },
+    tasks_completed:       { step: 0, label: 'Tasks done' },
+    actions_emitted:       { step: 0, label: 'Actions sent' },
     background_dispatched: { step: 0, label: 'Background tasks' },
-    first_chunk:         { step: 6, label: 'Core responded' },
+    streaming_started:     { step: 4, label: 'Generating response' },
+    first_chunk:           { step: 5, label: 'Response ready' },
+    tts_cache_hit:         { step: 0, label: 'Voice: Cache hit' },
+    tts_cache_miss_saved:  { step: 0, label: 'Voice: Downloaded & saved' },
 };
 
 function appendActivity(activity) {
@@ -1143,63 +1350,82 @@ function appendActivity(activity) {
     const item = document.createElement('div');
     item.className = 'activity-item';
     item.setAttribute('data-event', activity.event || '');
-    const stepInfo = ACTIVITY_STEPS[activity.event] || { step: 0, label: activity.event || 'Activity', icon: 'dot' };
+    const stepInfo = ACTIVITY_STEPS[activity.event] || { step: 0, label: activity.event || 'Activity' };
     let detail = '';
     const addRouteClass = (route) => {
         if (route === 'general') item.classList.add('route-general');
         else if (route === 'realtime') item.classList.add('route-realtime');
         else if (route === 'vision' || route === 'camera') item.classList.add('route-vision');
-        else if (route === 'task') item.classList.add('route-task');
-        else if (route === 'mixed') item.classList.add('route-task');
+        else if (route === 'task' || route === 'mixed') item.classList.add('route-task');
         else if (route === 'chat') item.classList.add('route-chat');
     };
-    if (activity.event === 'query_detected') {
+    const fmtTime = (ms) => ms != null ? (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`) : '';
+
+    if (activity.event === 'voice_input') {
+        if (activity.source === 'web-speech') {
+            detail = 'via Web Speech API (instant)';
+        } else if (activity.source === 'whisper') {
+            detail = 'via Groq Whisper (fallback)';
+        } else {
+            detail = 'Voice input';
+        }
+        item.classList.add('activity-sub');
+    } else if (activity.event === 'query_detected') {
         detail = activity.message || '';
     } else if (activity.event === 'decision') {
-        const ms = activity.elapsed_ms;
-        const timing = ms != null ? ` (${ms < 1000 ? ms + ' ms' : (ms / 1000).toFixed(2) + ' s'})` : '';
         const cat = (activity.query_type || '?').charAt(0).toUpperCase() + (activity.query_type || '').slice(1);
-        detail = `${cat} — ${activity.reasoning || ''}${timing}`;
+        const t = fmtTime(activity.elapsed_ms);
+        detail = t ? `${cat} (${t})` : cat;
         addRouteClass(activity.query_type);
     } else if (activity.event === 'intent_classified') {
         detail = (activity.intent || '?').charAt(0).toUpperCase() + (activity.intent || '').slice(1);
         item.classList.add('activity-sub', 'route-task');
     } else if (activity.event === 'routing') {
-        detail = `→ ${(activity.route || '?').charAt(0).toUpperCase() + (activity.route || '').slice(1)}`;
+        const r = (activity.route || '?').charAt(0).toUpperCase() + (activity.route || '').slice(1);
+        detail = `→ ${r}`;
         addRouteClass(activity.route);
-    } else if (activity.event === 'tasks_executing') {
-        detail = activity.message || 'Running tasks...';
-        item.classList.add('activity-sub', 'route-task');
-    } else if (activity.event === 'tasks_completed') {
-        detail = activity.message || 'Completed';
-        item.classList.add('activity-sub', 'route-task');
-    } else if (activity.event === 'actions_emitted') {
-        detail = activity.message || 'Actions sent';
-        item.classList.add('activity-sub');
-    } else if (activity.event === 'vision_analyzing') {
-        detail = activity.message || 'Analyzing image...';
-        item.classList.add('activity-sub', 'route-vision');
     } else if (activity.event === 'streaming_started') {
-        detail = `Generating via ${(activity.route || '?').charAt(0).toUpperCase() + (activity.route || '').slice(1)}`;
+        const r = (activity.route || '?').charAt(0).toUpperCase() + (activity.route || '').slice(1);
+        detail = `via ${r}`;
         addRouteClass(activity.route);
     } else if (activity.event === 'first_chunk') {
-        const ms = activity.elapsed_ms;
-        detail = ms != null ? `Core responded in ${ms < 1000 ? ms + ' ms' : (ms / 1000).toFixed(2) + ' s'}` : 'Response started';
+        const t = fmtTime(activity.elapsed_ms);
+        detail = t ? `in ${t}` : 'Started';
         addRouteClass(activity.route);
-    } else if (activity.event === 'extracting_query') {
-        detail = activity.message || 'Parsing your question for search...';
-        item.classList.add('activity-sub');
+    } else if (activity.event === 'context_retrieved') {
+        detail = 'Knowledge base';
+        item.classList.add('activity-sub', 'route-general');
     } else if (activity.event === 'searching_web') {
-        detail = activity.message || (activity.query ? `Query: "${activity.query}"` : 'Scanning Pulse...');
+        detail = activity.query ? `"${activity.query}"` : (activity.message || 'Searching...');
         item.classList.add('activity-sub', 'route-realtime');
     } else if (activity.event === 'search_completed') {
-        detail = activity.message || 'Search completed';
+        detail = activity.message || 'Done';
         item.classList.add('activity-sub', 'route-realtime');
-    } else if (activity.event === 'context_retrieved') {
-        detail = activity.message || 'Knowledge base ready';
-        item.classList.add('activity-sub', 'route-general');
+    } else if (activity.event === 'tasks_executing') {
+        detail = activity.message || 'Running...';
+        item.classList.add('activity-sub', 'route-task');
+    } else if (activity.event === 'tasks_completed') {
+        detail = activity.message || 'Done';
+        item.classList.add('activity-sub', 'route-task');
+    } else if (activity.event === 'vision_analyzing') {
+        detail = 'Processing camera frame';
+        item.classList.add('activity-sub', 'route-vision');
+    } else if (activity.event === 'actions_emitted') {
+        detail = activity.message || 'Sent';
+        item.classList.add('activity-sub');
+    } else if (activity.event === 'extracting_query') {
+        detail = 'Parsing search terms';
+        item.classList.add('activity-sub');
+    } else if (activity.event === 'tts_cache_hit') {
+        // Green-tinted sub-item: sentence served instantly from local SSD
+        detail = activity.sentence ? `"${activity.sentence}"` : 'Instant playback';
+        item.classList.add('activity-sub', 'route-tts-hit');
+    } else if (activity.event === 'tts_cache_miss_saved') {
+        // Blue-tinted sub-item: sentence downloaded online and now saved to disk
+        detail = activity.sentence ? `"${activity.sentence}"` : 'Saved to cache';
+        item.classList.add('activity-sub', 'route-tts-saved');
     } else {
-        detail = activity.message || (typeof activity === 'object' ? JSON.stringify(activity) : String(activity));
+        detail = activity.message || '';
     }
     const stepNum = stepInfo.step ? `<span class="activity-step">${stepInfo.step}</span>` : '';
     item.innerHTML = `
@@ -1294,12 +1520,6 @@ async function sendMessage(textOverride) {
     const wantsCamera = visionModeOn || isCameraQuery(text) || (camStream && text);
     if (wantsCamera && !text) text = 'What do you see?';
     if (!text || isStreaming) return;
-    if (isListening) {
-        pendingSendTranscript = null;
-        clearTimeout(speechSendTimeout);
-        speechSendTimeout = null;
-        stopListening();
-    }
     if ((isCameraQuery(text) || visionModeOn) && !camStream) {
         try {
             await startCamera();
@@ -1332,16 +1552,21 @@ async function sendMessage(textOverride) {
     const endpoint = '/chat/jarvis/stream';
     if (activityList) {
         activityList.innerHTML = '<div class="activity-empty" id="activity-empty">Processing...</div>';
+        // Show voice input source if this message came from PTT
+        if (pttVoiceSource) {
+            appendActivity({ event: 'voice_input', source: pttVoiceSource });
+            pttVoiceSource = null;
+        }
         if (activityToggle) activityToggle.style.display = '';
         if (activityPanel && settings.autoOpenActivity) { activityPanel.classList.add('open'); updatePanelOverlay(); }
     }
     let firstChunkReceived = false;
     let timeoutId = null;
     const controller = new AbortController();
+    pttStreamController = controller;  // expose to PTT for interrupt
     try {
-        if (ttsPlayer?.enabled && settings.thinkingSounds && preStarterPlayer) {
-            preStarterPlayer.play(() => {});
-        }
+        // Starter audio is now triggered by the 'decision' activity event
+        // when query_type is 'realtime' (Serper search needed)
         timeoutId = setTimeout(() => controller.abort(), 300000);
         const res = await fetch(`${API}${endpoint}`, {
             method: 'POST',
@@ -1388,6 +1613,13 @@ async function sendMessage(textOverride) {
                         appendActivity(data.activity);
                         if (activityToggle) activityToggle.style.display = '';
                         if (activityPanel && settings.autoOpenActivity) { activityPanel.classList.add('open'); updatePanelOverlay(); }
+                        // Play starter audio ONLY when brain decides this is a realtime (web search) query
+                        if (data.activity.event === 'decision' && data.activity.query_type === 'realtime') {
+                            if (ttsPlayer?.enabled && settings.thinkingSounds && preStarterPlayer) {
+                                preStarterPlayer.play(() => {
+                                });
+                            }
+                        }
                     }
                     if (data.search_results) {
                         renderSearchResults(data.search_results);
@@ -1404,6 +1636,11 @@ async function sendMessage(textOverride) {
                         const chunkText = data.chunk || '';
                         if (chunkText && !firstChunkReceived) {
                             firstChunkReceived = true;
+                            // Stop starter audio immediately for clean handoff to actual TTS
+                            if (preStarterPlayer && preStarterPlayer.audio) {
+                                preStarterPlayer.audio.pause();
+                                preStarterPlayer.audio.currentTime = 0;
+                            }
                             if (ttsPlayer) ttsPlayer.reset();
                         }
                         fullResponse += chunkText;
@@ -1438,25 +1675,31 @@ async function sendMessage(textOverride) {
     } catch (err) {
         clearTimeout(timeoutId);
         removeTypingIndicator();
-        let msg = 'Something went wrong. Please try again.';
         if (err.name === 'AbortError') {
-            msg = 'Request timed out. Please try again.';
-        } else if (err.message && err.message.includes('503')) {
-            msg = 'Service temporarily unavailable. Please try again in a moment.';
-        } else if (err.message && err.message.includes('429')) {
-            msg = 'Rate limit reached. Please wait a moment before trying again.';
-        } else if (err.message && err.message.length > 0) {
-            msg = err.message.length > 100 ? err.message.slice(0, 97) + '...' : err.message;
+            // If PTT triggered the abort, stay silent — user is interrupting to speak
+            if (!isRecording) {
+                addMessage('assistant', 'Request timed out. Please try again.');
+                showToast('Request timed out. Please try again.', 6000);
+            }
+        } else {
+            let msg = 'Something went wrong. Please try again.';
+            if (err.message && err.message.includes('503')) {
+                msg = 'Service temporarily unavailable. Please try again in a moment.';
+            } else if (err.message && err.message.includes('429')) {
+                msg = 'Rate limit reached. Please wait a moment before trying again.';
+            } else if (err.message && err.message.length > 0) {
+                msg = err.message.length > 100 ? err.message.slice(0, 97) + '...' : err.message;
+            }
+            addMessage('assistant', msg);
+            showToast(msg, 6000);
         }
-        addMessage('assistant', msg);
-        showToast(msg, 6000);
     } finally {
         clearTimeout(timeoutId);
         isStreaming = false;
+        pttStreamController = null;
         if (sendBtn) sendBtn.disabled = false;
         if (messageInput) messageInput.disabled = false;
         if (orbContainer) orbContainer.classList.remove('active');
-        maybeRestartListening();
     }
 }
 
