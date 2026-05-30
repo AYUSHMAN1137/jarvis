@@ -601,18 +601,16 @@ class ChatService:
         logger.info("[STARTUP-STREAM] Session: %s", session_id[:12])
         email_line = self._get_startup_email_line()
         calendar_line = self._get_startup_calendar_line()
-        drive_line = self._get_startup_drive_line()
         
         prompt = (
-            "Please search the current weather and give me a 7-sentence startup briefing in English.\n"
+            "Please search the current weather and give me a 6-sentence startup briefing in English.\n"
             "Line 1: Good morning/afternoon/evening, Ayush. (Pick based on current time)\n"
             "Line 2: Today is [Day], [Date].\n"
             "Line 3: Short weather summary for morning, afternoon, evening.\n"
             "Line 4: One sentence of advice based on weather.\n"
             f"Line 5: Say exactly this email update: {email_line}\n"
             f"Line 6: Say exactly this calendar update: {calendar_line}\n"
-            f"Line 7: Say exactly this Drive update: {drive_line}\n"
-            "Output ONLY the 7 sentences, no introductory or concluding text. English only."
+            "Output ONLY the 6 sentences, no introductory or concluding text. English only."
         )
         
         self.add_message(session_id, "user", prompt)
