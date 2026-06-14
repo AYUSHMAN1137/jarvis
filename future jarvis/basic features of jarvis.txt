@@ -1,0 +1,53 @@
+Basic features of jarvis
+
+• Multi-agent architecture (Jarvis, Explore, Plan, Verification, Fork agents)
+• Async concurrent execution + background agent tasks
+• OpenAI & Anthropic provider support
+• Streaming reasoning/tool calls/token tracking
+• Granular permission & sandbox system
+• Typed EventBus + 18-stage Hook lifecycle
+• Persistent memory + learning pipeline (M1→M2→M3)
+• Self-evolving Skills system
+• Heartbeat automation system
+• Rewind/checkpoint restoration
+• Task scheduler with dependency resolution
+
+🛠 17+ Built-in Tools:
+read, write, edit, bash, grep, repl, web search, memory, subagents, watcher tools, worktrees, MCP integration, background process manager & more.
+
+🧠 Watchers System:
+• Passive watchers for continuous monitoring
+• Active AI-powered watchers with their own LLMs, tools, permissions & autonomous loops
+• COP/state persistence
+• Dynamic plugin loading
+
+🔌 Extension Ecosystem:
+• Custom tools
+• Slash commands
+• Event listeners
+• Lifecycle hooks
+• Custom agents
+• Keyboard shortcuts
+• Runtime API access
+
+💻 Interfaces:
+• Advanced TUI
+• CLI
+• FastAPI + React WebUI
+• RPC mode for external integrations
+
+🔒 Security & Control:
+• Sandboxing
+• Dangerous command detection
+• File boundary enforcement
+• Session approval rules
+• Trusted folders system
+
+📦 Extras:
+• MCP proxy adapter
+• JSONL session history
+• Git worktrees
+• DSPy optimization
+• Skill crystallization
+• Persistent learning traces
+• Modular prompt templates
