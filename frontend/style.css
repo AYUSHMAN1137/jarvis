@@ -1445,6 +1445,101 @@ textarea { font-family: var(--font); color: var(--text); }
     50%      { transform: scale(1.10); opacity: 1; }
 }
 
+/* ============================================================
+   UI POLISH (append-only, non-breaking — class names unchanged)
+   ============================================================ */
+
+/* Chips: icon alignment + smoother gradient hover */
+.welcome-chips {
+    max-width: 560px;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.chip svg {
+    opacity: 0.7;
+    flex-shrink: 0;
+    transition: opacity var(--transition);
+}
+
+.chip:hover {
+    background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+    border-color: transparent;
+    box-shadow: 0 6px 18px rgba(124, 106, 239, 0.30);
+}
+
+.chip:hover svg { opacity: 1; }
+.chip:active { transform: translateY(0); }
+
+/* Welcome icon: subtle float */
+.welcome-icon {
+    animation: welcomeFloat 4s ease-in-out infinite;
+}
+
+@keyframes welcomeFloat {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-8px); }
+}
+
+/* Assistant avatar: soft accent glow */
+.message.assistant .msg-avatar {
+    box-shadow: 0 0 14px rgba(124, 106, 239, 0.35);
+}
+
+/* Logo: subtle animated sheen on the gradient */
+.logo {
+    background-size: 200% auto;
+    animation: logoSheen 6s linear infinite;
+}
+
+@keyframes logoSheen {
+    to { background-position: 200% center; }
+}
+
+/* Send button: clearer focus + idle attention */
+.send-btn:focus-visible,
+.action-btn:focus-visible,
+.btn-icon:focus-visible,
+.chip:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* Input wrapper: gentle accent ring when focused */
+.input-wrapper:focus-within {
+    border-color: rgba(124, 106, 239, 0.40);
+    box-shadow: 0 0 0 3px rgba(124, 106, 239, 0.10);
+}
+
+/* Status badge: subtle pill background */
+.status-badge {
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--glass-border);
+}
+
+/* Activity / search cards: lift on hover */
+.activity-item {
+    transition: background var(--transition), border-color var(--transition), transform var(--transition);
+}
+
+.activity-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.10);
+}
+
+/* Smoother message entrance */
+.message {
+    animation: msgIn 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 @media (max-width: 768px) {
     :root { --input-bar-h: calc(100px + env(safe-area-inset-bottom, 0px)); --content-gap: 12px; --panel-gap: 12px; }
     .header { padding: 0 16px; gap: 12px; margin-bottom: var(--content-gap); }
