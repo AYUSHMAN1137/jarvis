@@ -8,6 +8,7 @@ from app.services.vector_store import VectorStoreService
 from app.services.api_key_monitor import get_api_key_monitor
 from app.utils.time_info import get_time_information
 from app.utils.retry import with_retry
+from app.services import llm_providers
 from config import (
     GROQ_API_KEYS,
     GROQ_MODEL,
@@ -100,6 +101,22 @@ class GroqService:
         self.vector_store_service = vector_store_service
         logger.info(f"Initialized GroqService with {len(GROQ_API_KEYS)} API key(s) (primary-first fallback)")
 
+        # Optional Gemini secondary provider (OpenAI-compatible). Built only when
+        # Gemini is enabled + keys exist. When empty, every code path below behaves
+        # exactly like the original Groq-only flow (zero regression).
+        self.gemini_llms = []
+        self.last_provider_event = None
+        if llm_providers.gemini_enabled():
+            try:
+                self.gemini_llms = [
+                    llm_providers.make_langchain_llm(idx, temperature=0.5, max_tokens=1024)
+                    for idx in range(llm_providers.key_count())
+                ]
+                logger.info(f"[GEMINI] GroqService secondary provider ready with {len(self.gemini_llms)} key(s)")
+            except Exception as e:
+                logger.warning(f"[GEMINI] Could not initialize Gemini fallback in GroqService: {e}")
+                self.gemini_llms = []
+
     def _invoke_llm(
         self,
         prompt: ChatPromptTemplate,
@@ -165,6 +182,10 @@ class GroqService:
 
                 break
 
+        # Groq keys exhausted — try Gemini as a secondary provider (if enabled).
+        gem_text = self._invoke_gemini(prompt, messages, question, operation="chat_invoke")
+        if gem_text is not None:
+            return gem_text
         masked_all = ", ".join([_mask_api_key(GROQ_API_KEYS[j]) for j in keys_tried])
         logger.error(f"All {n} API key(s) failed. Tried: {masked_all}")
         raise AllGroqApisFailedError(ALL_APIS_FAILED_MESSAGE) from last_exc
@@ -212,6 +233,7 @@ class GroqService:
                         if first_chunk_time is None:
                             first_chunk_time = time.perf_counter() - stream_start
                             _log_timing("first_chunk", first_chunk_time)
+                            yield self._provider_activity("groq", i, failover=(j > 0), operation="chat_stream")
 
                         chunk_count += 1
                         accumulated += content
@@ -253,8 +275,121 @@ class GroqService:
                     continue
                 break
 
-        logger.error(f"All {n} API key(s) failed during stream.")
+        # Groq keys exhausted — try Gemini as a secondary provider (if enabled).
+        gem_ok = yield from self._stream_gemini(prompt, messages, question, operation="chat_stream")
+        if gem_ok:
+            return
+        logger.error(f"All {n} API key(s) failed during stream (Gemini fallback unavailable or also failed).")
         raise AllGroqApisFailedError(ALL_APIS_FAILED_MESSAGE) from last_exc
+
+    def _provider_activity(self, provider, key_index, failover=False, operation="chat", route="chat"):
+        """Build an activity event describing which provider/key answered."""
+        if provider == "gemini":
+            label = "GEMINI_API_KEY" if key_index == 0 else f"GEMINI_API_KEY_{key_index + 1}"
+            pretty = "Gemini"
+        else:
+            label = "GROQ_API_KEY" if key_index == 0 else f"GROQ_API_KEY_{key_index + 1}"
+            pretty = "Groq"
+        if failover:
+            message = f"{pretty} ({label}) \u2192 answered (failover)"
+            event = "provider_failover"
+        else:
+            message = f"{pretty} ({label}) \u2192 answered"
+            event = "llm_provider"
+        ev = {
+            "event": event,
+            "provider": provider,
+            "key_index": key_index,
+            "key_label": label,
+            "operation": operation,
+            "failover": bool(failover),
+            "message": message,
+            "route": route,
+        }
+        self.last_provider_event = ev
+        return {"_activity": ev}
+
+    def _stream_gemini(self, prompt, messages, question, operation="chat_stream"):
+        """Stream from Gemini keys (failover order). Returns True if any content was produced."""
+        if not self.gemini_llms:
+            return False
+        monitor = get_api_key_monitor()
+        for idx in llm_providers.ordered_keys():
+            if idx >= len(self.gemini_llms):
+                continue
+            monitor.record_gemini_attempt(idx, operation=operation, source="groq_service")
+            key_t0 = time.perf_counter()
+            emitted = False
+            try:
+                chain = prompt | self.gemini_llms[idx]
+                chunk_count = 0
+                accumulated = ""
+                last_check_len = 0
+                for chunk in chain.stream({"history": messages, "question": question}):
+                    content = ""
+                    if hasattr(chunk, "content"):
+                        content = chunk.content or ""
+                    elif isinstance(chunk, dict) and "content" in chunk:
+                        content = chunk.get("content", "") or ""
+                    if isinstance(content, str) and content:
+                        if not emitted:
+                            emitted = True
+                            yield self._provider_activity("gemini", idx, failover=True, operation=operation)
+                        chunk_count += 1
+                        accumulated += content
+                        if len(accumulated) - last_check_len >= _REPEAT_CHECK_INTERVAL:
+                            last_check_len = len(accumulated)
+                            if _detect_repetition_loop(accumulated):
+                                logger.warning("[GEMINI-STREAM] Repetition loop detected — stopping")
+                                break
+                        yield content
+                latency_ms = int((time.perf_counter() - key_t0) * 1000)
+                if chunk_count > 0:
+                    monitor.record_gemini_success(idx, operation=operation, source="groq_service", latency_ms=latency_ms)
+                    logger.info(f"[GEMINI] Fallback stream succeeded on key #{idx + 1}")
+                    return True
+                monitor.record_gemini_failure(idx, operation=operation, source="groq_service", error="empty stream", latency_ms=latency_ms)
+            except Exception as e:
+                latency_ms = int((time.perf_counter() - key_t0) * 1000)
+                rl = llm_providers.is_rate_limit_error(e)
+                monitor.record_gemini_failure(idx, operation=operation, source="groq_service", error=str(e), is_rate_limit=rl, latency_ms=latency_ms)
+                llm_providers.trip(idx)
+                logger.warning(f"[GEMINI] key #{idx + 1} stream failed: {str(e)[:100]}")
+                if emitted:
+                    # Partial content already streamed; do not retry (would duplicate text).
+                    return True
+                continue
+        return False
+
+    def _invoke_gemini(self, prompt, messages, question, operation="chat_invoke"):
+        """Non-streaming Gemini fallback. Returns text or None."""
+        if not self.gemini_llms:
+            return None
+        monitor = get_api_key_monitor()
+        for idx in llm_providers.ordered_keys():
+            if idx >= len(self.gemini_llms):
+                continue
+            monitor.record_gemini_attempt(idx, operation=operation, source="groq_service")
+            key_t0 = time.perf_counter()
+            try:
+                chain = prompt | self.gemini_llms[idx]
+                response = chain.invoke({"history": messages, "question": question})
+                text = response.content
+                if _detect_repetition_loop(text):
+                    text = _truncate_at_repetition(text)
+                latency_ms = int((time.perf_counter() - key_t0) * 1000)
+                monitor.record_gemini_success(idx, operation=operation, source="groq_service", latency_ms=latency_ms)
+                self._provider_activity("gemini", idx, failover=True, operation=operation)
+                logger.info(f"[GEMINI] Fallback invoke succeeded on key #{idx + 1}")
+                return text
+            except Exception as e:
+                latency_ms = int((time.perf_counter() - key_t0) * 1000)
+                rl = llm_providers.is_rate_limit_error(e)
+                monitor.record_gemini_failure(idx, operation=operation, source="groq_service", error=str(e), is_rate_limit=rl, latency_ms=latency_ms)
+                llm_providers.trip(idx)
+                logger.warning(f"[GEMINI] key #{idx + 1} invoke failed: {str(e)[:100]}")
+                continue
+        return None
 
     def _build_prompt_and_messages(
         self,
@@ -290,6 +425,19 @@ class GroqService:
 
         time_info = get_time_information()
         system_message = JARVIS_SYSTEM_PROMPT
+
+        # Phase 2 persistent memory: prepend what JARVIS remembers about the user
+        # (profile, facts, last action, corrections). Fail-soft via the helper.
+        from app.services.memory_service import augment_system_prompt
+        system_message = augment_system_prompt(system_message, question)
+
+        # Phase 8 personalization: append learned facts/aliases/habits so the
+        # agent's answers reflect what JARVIS knows about this user. Fail-soft.
+        try:
+            from app.services.agent.phase8 import get_phase8
+            system_message = get_phase8().augment(system_message)
+        except Exception as _p8aug:  # noqa: BLE001
+            logger.debug("[MEMORY] Phase 8 augment skipped: %s", _p8aug)
 
         system_message += f"\n\nCurrent time and date: {time_info}"
 

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from config import GROQ_API_KEYS, SERPER_API_KEYS
+from config import GROQ_API_KEYS, SERPER_API_KEYS, GEMINI_API_KEYS
 
 logger = logging.getLogger("J.A.R.V.I.S")
 
@@ -34,6 +34,10 @@ class ApiKeyMonitor:
         self._groq: Dict[int, Dict[str, Any]] = {}
         for idx, key in enumerate(GROQ_API_KEYS):
             self._groq[idx] = self._new_groq_stat(idx, key)
+
+        self._gemini: Dict[int, Dict[str, Any]] = {}
+        for idx, key in enumerate(GEMINI_API_KEYS):
+            self._gemini[idx] = self._new_gemini_stat(idx, key)
 
         self._providers: Dict[str, Dict[str, Any]] = {
             "serper": {
@@ -100,6 +104,20 @@ class ApiKeyMonitor:
                     for idx, stat in self._groq.items()
                 }
             },
+            "gemini": {
+                "keys": {
+                    str(idx): {
+                        "attempts": int(stat.get("attempts", 0)),
+                        "successes": int(stat.get("successes", 0)),
+                        "failures": int(stat.get("failures", 0)),
+                        "rate_limits": int(stat.get("rate_limits", 0)),
+                        "last_success_at": stat.get("last_success_at"),
+                        "last_error": stat.get("last_error", ""),
+                        "last_error_at": stat.get("last_error_at"),
+                    }
+                    for idx, stat in self._gemini.items()
+                }
+            },
             "providers": {
                 name: {
                     "configured": bool(p.get("configured", False)),
@@ -143,6 +161,22 @@ class ApiKeyMonitor:
                     continue
                 self._ensure_key_stat(idx)
                 stat = self._groq[idx]
+                stat["attempts"] = int(val.get("attempts", stat["attempts"]))
+                stat["successes"] = int(val.get("successes", stat["successes"]))
+                stat["failures"] = int(val.get("failures", stat["failures"]))
+                stat["rate_limits"] = int(val.get("rate_limits", stat["rate_limits"]))
+                stat["last_success_at"] = val.get("last_success_at") or stat.get("last_success_at")
+                stat["last_error"] = val.get("last_error", stat.get("last_error", ""))
+                stat["last_error_at"] = val.get("last_error_at") or stat.get("last_error_at")
+
+            gem_keys = ((data.get("gemini") or {}).get("keys") or {})
+            for idx_str, val in gem_keys.items():
+                try:
+                    idx = int(idx_str)
+                except Exception:
+                    continue
+                self._ensure_gemini_stat(idx)
+                stat = self._gemini[idx]
                 stat["attempts"] = int(val.get("attempts", stat["attempts"]))
                 stat["successes"] = int(val.get("successes", stat["successes"]))
                 stat["failures"] = int(val.get("failures", stat["failures"]))
@@ -252,6 +286,115 @@ class ApiKeyMonitor:
             )
             self._persist_if_due_locked()
 
+    @staticmethod
+    def _new_gemini_stat(idx: int, key: str) -> Dict[str, Any]:
+        return {
+            "key_index": idx,
+            "key_label": f"GEMINI_API_KEY_{idx + 1}" if idx > 0 else "GEMINI_API_KEY",
+            "key_masked": _mask_api_key(key),
+            "attempts": 0,
+            "successes": 0,
+            "failures": 0,
+            "rate_limits": 0,
+            "in_flight": 0,
+            "last_used_at": None,
+            "last_success_at": None,
+            "last_error": "",
+            "last_error_at": None,
+            "last_latency_ms": None,
+        }
+
+    def _ensure_gemini_stat(self, idx: int):
+        if idx not in self._gemini:
+            self._gemini[idx] = self._new_gemini_stat(idx, "")
+
+    def record_gemini_attempt(self, key_index: int, operation: str, source: str, trace_id: Optional[str] = None):
+        with self._lock:
+            self._ensure_gemini_stat(key_index)
+            stat = self._gemini[key_index]
+            stat["attempts"] += 1
+            stat["in_flight"] += 1
+            stat["last_used_at"] = _utc_now_iso()
+            self._event(
+                "attempt",
+                "gemini",
+                {
+                    "key_index": key_index,
+                    "key_label": stat["key_label"],
+                    "operation": operation,
+                    "source": source,
+                    "trace_id": trace_id,
+                },
+            )
+            self._persist_if_due_locked()
+
+    def record_gemini_success(
+        self,
+        key_index: int,
+        operation: str,
+        source: str,
+        latency_ms: Optional[int] = None,
+        trace_id: Optional[str] = None,
+    ):
+        with self._lock:
+            self._ensure_gemini_stat(key_index)
+            stat = self._gemini[key_index]
+            stat["successes"] += 1
+            stat["in_flight"] = max(0, stat["in_flight"] - 1)
+            stat["last_success_at"] = _utc_now_iso()
+            if latency_ms is not None:
+                stat["last_latency_ms"] = int(latency_ms)
+            self._event(
+                "success",
+                "gemini",
+                {
+                    "key_index": key_index,
+                    "key_label": stat["key_label"],
+                    "operation": operation,
+                    "source": source,
+                    "latency_ms": latency_ms,
+                    "trace_id": trace_id,
+                },
+            )
+            self._persist_if_due_locked()
+
+    def record_gemini_failure(
+        self,
+        key_index: int,
+        operation: str,
+        source: str,
+        error: str,
+        is_rate_limit: bool = False,
+        latency_ms: Optional[int] = None,
+        trace_id: Optional[str] = None,
+    ):
+        with self._lock:
+            self._ensure_gemini_stat(key_index)
+            stat = self._gemini[key_index]
+            stat["failures"] += 1
+            if is_rate_limit:
+                stat["rate_limits"] += 1
+            stat["in_flight"] = max(0, stat["in_flight"] - 1)
+            stat["last_error"] = (error or "")[:240]
+            stat["last_error_at"] = _utc_now_iso()
+            if latency_ms is not None:
+                stat["last_latency_ms"] = int(latency_ms)
+            self._event(
+                "failure",
+                "gemini",
+                {
+                    "key_index": key_index,
+                    "key_label": stat["key_label"],
+                    "operation": operation,
+                    "source": source,
+                    "rate_limited": bool(is_rate_limit),
+                    "latency_ms": latency_ms,
+                    "error": (error or "")[:120],
+                    "trace_id": trace_id,
+                },
+            )
+            self._persist_if_due_locked()
+
     def record_provider_attempt(self, provider: str, operation: str, source: str, trace_id: Optional[str] = None):
         with self._lock:
             p = self._providers.setdefault(
@@ -293,6 +436,7 @@ class ApiKeyMonitor:
     def snapshot(self) -> Dict[str, Any]:
         with self._lock:
             keys = [self._groq[idx].copy() for idx in sorted(self._groq.keys())]
+            gem_keys = [self._gemini[idx].copy() for idx in sorted(self._gemini.keys())]
             total_attempts = sum(k["attempts"] for k in keys)
             total_successes = sum(k["successes"] for k in keys)
             total_failures = sum(k["failures"] for k in keys)
@@ -314,6 +458,17 @@ class ApiKeyMonitor:
                         "in_flight": in_flight,
                     },
                     "keys": keys,
+                },
+                "gemini": {
+                    "configured_keys": len(self._gemini),
+                    "summary": {
+                        "attempts": sum(k["attempts"] for k in gem_keys),
+                        "successes": sum(k["successes"] for k in gem_keys),
+                        "failures": sum(k["failures"] for k in gem_keys),
+                        "rate_limits": sum(k["rate_limits"] for k in gem_keys),
+                        "in_flight": sum(k["in_flight"] for k in gem_keys),
+                    },
+                    "keys": gem_keys,
                 },
                 "providers": {name: data.copy() for name, data in self._providers.items()},
                 "events": list(self._events)[:120],

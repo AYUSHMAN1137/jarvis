@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>J.A.R.V.I.S · System Watcher</title>
+<style>
+  :root{
+    --bg:#070b12; --bg2:#0b1019; --card:#121a2b; --card2:#0f1626;
+    --line:#1e2a40; --txt:#e8eef6; --mut:#8190a8; --accent:#3da9fc;
+    --ok:#3ad17f; --okbg:rgba(58,209,127,.13); --bad:#ff6b6f; --badbg:rgba(255,107,111,.13);
+    --warn:#f5b942; --shadow:0 6px 24px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:
+    radial-gradient(1200px 600px at 80% -10%,rgba(61,169,252,.10),transparent 60%),
+    radial-gradient(900px 500px at -10% 110%,rgba(58,209,127,.07),transparent 55%),var(--bg);
+    color:var(--txt);-webkit-font-smoothing:antialiased;}
+  a{color:var(--accent);text-decoration:none;}
+
+  header{display:flex;align-items:center;justify-content:space-between;gap:16px;
+    padding:14px 26px;border-bottom:1px solid var(--line);position:sticky;top:0;
+    background:rgba(7,11,18,.82);backdrop-filter:blur(10px);z-index:20;flex-wrap:wrap;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .logo{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;
+    background:linear-gradient(135deg,#3da9fc,#7b61ff);box-shadow:0 4px 14px rgba(61,169,252,.4);
+    font-weight:800;font-size:15px;color:#fff;}
+  h1{font-size:16px;margin:0;letter-spacing:1.5px;font-weight:700;}
+  h1 small{display:block;font-size:10.5px;letter-spacing:.5px;color:var(--mut);font-weight:500;margin-top:2px;}
+  .hdr-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .clock{font-variant-numeric:tabular-nums;font-size:13px;color:var(--mut);}
+  .badge{font-size:12px;font-weight:700;padding:6px 13px;border-radius:999px;display:inline-flex;align-items:center;gap:7px;}
+  .badge.ok{background:var(--okbg);color:var(--ok);}
+  .badge.bad{background:var(--badbg);color:var(--bad);}
+  .dot{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 0 0 currentColor;}
+  .badge.ok .dot{animation:pulse 1.8s infinite;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(58,209,127,.5);}70%{box-shadow:0 0 0 7px rgba(58,209,127,0);}100%{box-shadow:0 0 0 0 rgba(58,209,127,0);}}
+  .btn{cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--txt);
+    font-size:12.5px;font-weight:600;padding:7px 13px;border-radius:8px;transition:.15s;display:inline-flex;align-items:center;gap:6px;}
+  .btn:hover{border-color:var(--accent);color:var(--accent);}
+  .btn.active{background:rgba(61,169,252,.14);border-color:var(--accent);color:var(--accent);}
+
+  .wrap{padding:24px;max-width:1180px;margin:0 auto;}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:18px;}
+  .card{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);
+    border-radius:14px;padding:15px 16px;box-shadow:var(--shadow);position:relative;overflow:hidden;}
+  .card .k{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:6px;}
+  .card .v{font-size:26px;font-weight:800;margin-top:7px;word-break:break-word;line-height:1.15;}
+  .card .v.sm{font-size:15px;font-weight:600;}
+  .ic{font-size:13px;}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  @media(max-width:820px){.grid2{grid-template-columns:1fr;}}
+  section{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);
+    border-radius:14px;padding:16px 18px;margin-bottom:18px;box-shadow:var(--shadow);}
+  section h2{font-size:12.5px;margin:0 0 13px;color:var(--accent);text-transform:uppercase;
+    letter-spacing:.7px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  section h2 .count{color:var(--mut);font-weight:600;}
+
+  .toggles{display:flex;flex-direction:column;gap:14px;}
+  .toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .toggle .lbl{display:flex;align-items:center;gap:9px;font-size:14px;}
+  .pill{font-size:11.5px;font-weight:700;padding:4px 11px;border-radius:999px;letter-spacing:.4px;}
+  .pill.on{background:var(--okbg);color:var(--ok);}
+  .pill.off{background:var(--badbg);color:var(--bad);}
+  .pill.unk{background:rgba(129,144,168,.13);color:var(--mut);}
+  .ssid{font-size:11.5px;color:var(--mut);margin-left:6px;}
+  .bar{height:8px;border-radius:999px;background:#16202f;overflow:hidden;flex:1;margin:0 12px;}
+  .bar > i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#3da9fc,#7b61ff);transition:width .4s ease;}
+  .bar.bright > i{background:linear-gradient(90deg,#f5b942,#ffd479);}
+  .meterrow{display:flex;align-items:center;}
+  .meterrow .val{font-size:13px;font-weight:700;min-width:42px;text-align:right;font-variant-numeric:tabular-nums;}
+
+  .clip{font-size:13px;color:#cdd8ea;word-break:break-word;white-space:pre-wrap;line-height:1.5;
+    background:#0c1320;border:1px dashed var(--line);border-radius:10px;padding:12px;min-height:46px;}
+  .clip.empty{color:var(--mut);font-style:italic;}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;}
+  tr:last-child td{border-bottom:none;}
+  tbody tr{transition:background .15s;}
+  tbody tr:hover{background:rgba(61,169,252,.05);}
+  td.exe{color:var(--mut);font-size:12px;word-break:break-all;}
+  .tag{font-size:11px;font-weight:700;color:var(--accent);background:rgba(61,169,252,.12);padding:2px 8px;border-radius:6px;}
+  .pids{font-variant-numeric:tabular-nums;color:#cdd8ea;}
+  .activerow{background:rgba(58,209,127,.07)!important;}
+  .actdot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:7px;vertical-align:middle;}
+  .dim{color:var(--mut);font-size:12px;font-variant-numeric:tabular-nums;}
+  .empty{color:var(--mut);font-style:italic;padding:14px 4px;text-align:center;}
+
+  .search{width:170px;background:#0c1320;border:1px solid var(--line);color:var(--txt);
+    border-radius:8px;padding:5px 10px;font-size:12.5px;}
+  .search:focus{outline:none;border-color:var(--accent);}
+  .scroll{max-height:340px;overflow:auto;}
+  .scroll::-webkit-scrollbar{width:8px;}.scroll::-webkit-scrollbar-thumb{background:#22304a;border-radius:8px;}
+  footer{text-align:center;color:var(--mut);font-size:12px;padding:10px 16px 26px;}
+  .spin{animation:spin 1s linear infinite;display:inline-block;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo">J</div>
+    <h1>J.A.R.V.I.S<small>System Watcher · live world model</small></h1>
+  </div>
+  <div class="hdr-right">
+    <span class="clock" id="clock">--:--:--</span>
+    <button class="btn active" id="autoBtn" title="Toggle auto-refresh">⏸ Pause</button>
+    <button class="btn" id="refreshBtn" title="Refresh now">↻ Refresh</button>
+    <span id="status" class="badge bad"><span class="dot"></span>CONNECTING…</span>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="cards">
+    <div class="card"><div class="k"><span class="ic">⚙️</span>Processes</div><div class="v" id="procs">–</div></div>
+    <div class="card"><div class="k"><span class="ic">🪟</span>Open Windows</div><div class="v" id="wincount">–</div></div>
+    <div class="card"><div class="k"><span class="ic">🚀</span>Apps Opened</div><div class="v" id="launchcount">–</div></div>
+    <div class="card" style="grid-column:span 2"><div class="k"><span class="ic">🎯</span>Active Window</div><div class="v sm" id="active">–</div></div>
+  </div>
+
+  <div class="grid2">
+    <section>
+      <h2>System Toggles</h2>
+      <div class="toggles">
+        <div class="toggle">
+          <span class="lbl"><span class="ic">📶</span>Wi-Fi<span class="ssid" id="ssid"></span></span>
+          <span class="pill unk" id="wifi">–</span>
+        </div>
+        <div class="toggle">
+          <span class="lbl"><span class="ic">🔵</span>Bluetooth</span>
+          <span class="pill unk" id="bt">–</span>
+        </div>
+        <div class="toggle">
+          <span class="lbl"><span class="ic">🔊</span>Volume</span>
+          <div class="meterrow" style="flex:1"><div class="bar"><i id="volbar" style="width:0%"></i></div><span class="val" id="vol">–</span></div>
+        </div>
+        <div class="toggle">
+          <span class="lbl"><span class="ic">☀️</span>Brightness</span>
+          <div class="meterrow" style="flex:1"><div class="bar bright"><i id="brightbar" style="width:0%"></i></div><span class="val" id="bright">–</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Clipboard <span class="count" id="clipcount"></span></h2>
+      <div class="clip empty" id="clip">–</div>
+    </section>
+  </div>
+
+  <section>
+    <h2>Apps JARVIS Opened <span class="count">· “close it” registry</span></h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>App</th><th>PID(s)</th><th>Opened</th><th>Executable</th></tr></thead>
+        <tbody id="launched"></tbody>
+      </table>
+    </div>
+    <div id="launched-empty" class="empty" style="display:none">No apps tracked yet — ask JARVIS to open something.</div>
+  </section>
+
+  <section>
+    <h2>Open Windows
+      <span style="display:flex;align-items:center;gap:10px">
+        <span class="count" id="wlabel"></span>
+        <input class="search" id="wsearch" placeholder="Filter windows…"/>
+      </span>
+    </h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Title</th><th>Size</th><th>Position</th></tr></thead>
+        <tbody id="windows"></tbody>
+      </table>
+    </div>
+    <div id="windows-empty" class="empty" style="display:none">No windows detected.</div>
+  </section>
+</div>
+<footer id="foot">—</footer>
+
+<script>
+const REFRESH = 2000;
+let auto = true, timer = null, lastData = null;
+
+function esc(t){const d=document.createElement('div');d.textContent=(t==null?'':String(t));return d.innerHTML;}
+function ago(ts){
+  if(!ts) return '–';
+  let s = Math.max(0, Math.floor(Date.now()/1000 - ts));
+  if(s < 60) return s + 's ago';
+  const m = Math.floor(s/60); s = s%60;
+  if(m < 60) return m + 'm ' + s + 's ago';
+  const h = Math.floor(m/60); return h + 'h ' + (m%60) + 'm ago';
+}
+function pill(el, state){
+  const v = (state||'').toLowerCase();
+  if(v === 'on'){ el.className='pill on'; el.textContent='ON'; }
+  else if(v === 'off'){ el.className='pill off'; el.textContent='OFF'; }
+  else { el.className='pill unk'; el.textContent = state ? String(state).toUpperCase() : 'UNKNOWN'; }
+}
+
+function renderWindows(){
+  if(!lastData) return;
+  const q = (document.getElementById('wsearch').value||'').toLowerCase();
+  let det = lastData.windows_detail;
+  if(!det || !det.length){ det = (lastData.windows||[]).map(t=>({title:t})); }
+  const rows = det.filter(w => !q || (w.title||'').toLowerCase().includes(q));
+  document.getElementById('wlabel').textContent = rows.length + ' / ' + det.length;
+  document.getElementById('windows').innerHTML = rows.map(function(w){
+    const sz = (w.width!=null&&w.height!=null&&(w.width||w.height)) ? (w.width+'×'+w.height) : '–';
+    const pos = (w.left!=null&&w.top!=null&&(w.left||w.top||sz!=='–')) ? ('('+w.left+', '+w.top+')') : '–';
+    const act = w.active ? '<span class="actdot"></span>' : '';
+    return '<tr class="'+(w.active?'activerow':'')+'"><td>'+act+esc(w.title)+'</td><td class="dim">'+sz+'</td><td class="dim">'+pos+'</td></tr>';
+  }).join('');
+  document.getElementById('windows-empty').style.display = det.length ? 'none':'block';
+}
+
+async function tick(){
+  try{
+    const r = await fetch('/api/watcher/state', {cache:'no-store'});
+    const d = await r.json();
+    lastData = d;
+    const st = document.getElementById('status');
+    if(d.running){ st.className='badge ok'; st.innerHTML='<span class="dot"></span>RUNNING'; }
+    else { st.className='badge bad'; st.innerHTML='<span class="dot"></span>STOPPED'; }
+
+    document.getElementById('procs').textContent = (d.process_count==null?0:d.process_count);
+    const wins = d.windows || [];
+    document.getElementById('wincount').textContent = wins.length;
+    const launched = d.launched || [];
+    document.getElementById('launchcount').textContent = launched.length;
+    document.getElementById('active').textContent = d.active_window || '–';
+
+    const s = d.settings || {};
+    pill(document.getElementById('wifi'), s.wifi);
+    document.getElementById('ssid').textContent = (s.wifi==='on' && s.wifi_ssid) ? ('· '+s.wifi_ssid) : '';
+    pill(document.getElementById('bt'), s.bluetooth);
+    const vol = s.volume==null ? null : s.volume;
+    document.getElementById('vol').textContent = vol==null ? '–' : (vol + '%' + (s.muted?' 🔇':''));
+    document.getElementById('volbar').style.width = (vol==null?0:vol) + '%';
+    const br = s.brightness==null ? null : s.brightness;
+    document.getElementById('bright').textContent = br==null ? '–' : (br + '%');
+    document.getElementById('brightbar').style.width = (br==null?0:br) + '%';
+
+    const clip = (d.clipboard_preview||'').trim();
+    const ce = document.getElementById('clip');
+    if(clip){ ce.className='clip'; ce.textContent = clip; document.getElementById('clipcount').textContent = '· '+clip.length+' chars'; }
+    else { ce.className='clip empty'; ce.textContent='(empty or non-text)'; document.getElementById('clipcount').textContent=''; }
+
+    document.getElementById('launched').innerHTML = launched.map(function(a){
+      return '<tr><td><span class="tag">'+(esc(a.name)||'?')+'</span></td><td class="pids">'+((a.pids||[]).join(', ')||'–')+'</td><td class="dim">'+ago(a.opened_at)+'</td><td class="exe">'+(esc(a.exe)||'–')+'</td></tr>';
+    }).join('');
+    document.getElementById('launched-empty').style.display = launched.length ? 'none':'block';
+
+    renderWindows();
+
+    const iv = d.interval ? (' · daemon '+d.interval+'s') : '';
+    document.getElementById('foot').textContent = 'Updated ' + new Date().toLocaleTimeString() + ' · auto-refresh ' + (auto?(REFRESH/1000)+'s':'paused') + iv;
+  }catch(e){
+    const st = document.getElementById('status');
+    st.className='badge bad'; st.innerHTML='<span class="dot"></span>OFFLINE';
+    document.getElementById('foot').textContent = 'Cannot reach server — is JARVIS running?';
+  }
+}
+
+function schedule(){ if(timer) clearInterval(timer); if(auto) timer = setInterval(tick, REFRESH); }
+function clock(){ document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }
+
+document.getElementById('autoBtn').addEventListener('click', function(){
+  auto = !auto; this.textContent = auto ? '⏸ Pause' : '▶ Resume';
+  this.classList.toggle('active', auto); schedule(); if(auto) tick();
+});
+document.getElementById('refreshBtn').addEventListener('click', function(){
+  const ic = this; ic.innerHTML='<span class="spin">↻</span> Refresh';
+  tick().finally(()=>setTimeout(()=>ic.innerHTML='↻ Refresh',300));
+});
+document.getElementById('wsearch').addEventListener('input', renderWindows);
+
+clock(); setInterval(clock, 1000);
+tick(); schedule();
+</script>
+</body>
+</html>

@@ -1,0 +1,406 @@
+2026-07-05 04:10:44 | INFO     | J.A.R.V.I.S          | [STARTUP] comtypes COM-release guard installed (silences harmless GC noise).
+INFO:     Started server process [7420]
+INFO:     Waiting for application startup.
+2026-07-05 04:10:44 | INFO     | J.A.R.V.I.S          | ============================================================
+2026-07-05 04:10:44 | INFO     | J.A.R.V.I.S          | J.A.R.V.I.S - Starting Up...
+2026-07-05 04:10:44 | INFO     | J.A.R.V.I.S          | ============================================================
+2026-07-05 04:10:44 | INFO     | J.A.R.V.I.S          | [CONFIG] Assistant name: Jarvis
+2026-07-05 04:10:44 | INFO     | J.A.R.V.I.S          | [CONFIG] Groq model: openai/gpt-oss-120b
+2026-07-05 04:10:44 | INFO     | J.A.R.V.I.S          | [CONFIG] Groq API keys loaded: 8
+2026-07-05 04:10:44 | INFO     | J.A.R.V.I.S          | [CONFIG] Serper API key: configured
+2026-07-05 04:10:44 | INFO     | J.A.R.V.I.S          | [CONFIG] Image generation: Pollinations.ai (free, no API key)
+2026-07-05 04:10:44 | INFO     | J.A.R.V.I.S          | [CONFIG] Embedding model: sentence-transformers/all-MiniLM-L6-v2
+2026-07-05 04:10:44 | INFO     | J.A.R.V.I.S          | [CONFIG] Chunk size: 1000 | Overlap: 200 | Max history turns: 20
+2026-07-05 04:10:44 | INFO     | J.A.R.V.I.S          | [WATCHER] Background daemon started (interval=2.0s).
+2026-07-05 04:10:44 | INFO     | J.A.R.V.I.S          | [STARTUP] System state watcher (background daemon) started.
+2026-07-05 04:10:44 | INFO     | J.A.R.V.I.S          | [MEMORY] Ready (facts=7, fts=on).
+2026-07-05 04:10:44 | INFO     | J.A.R.V.I.S          | [STARTUP] Persistent memory ready: facts=7, fts=on
+2026-07-05 04:10:44 | INFO     | J.A.R.V.I.S          | [STARTUP] Loading embedding model 'sentence-transformers/all-MiniLM-L6-v2' on CPU (first run downloads it; usually the slowest step)...
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-07-05 04:10:45 | WARNING  | huggingface_hub.utils._http | Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+
+   ΓòöΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòù
+   Γòæ                                                          Γòæ
+   Γòæ         ΓûêΓûêΓòù ΓûêΓûêΓûêΓûêΓûêΓòù ΓûêΓûêΓûêΓûêΓûêΓûêΓòù ΓûêΓûêΓòù   ΓûêΓûêΓòùΓûêΓûêΓòùΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓòù          Γòæ
+   Γòæ         ΓûêΓûêΓòæΓûêΓûêΓòöΓòÉΓòÉΓûêΓûêΓòùΓûêΓûêΓòöΓòÉΓòÉΓûêΓûêΓòùΓûêΓûêΓòæ   ΓûêΓûêΓòæΓûêΓûêΓòæΓûêΓûêΓòöΓòÉΓòÉΓòÉΓòÉΓò¥          Γòæ
+   Γòæ         ΓûêΓûêΓòæΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓòæΓûêΓûêΓûêΓûêΓûêΓûêΓòöΓò¥ΓûêΓûêΓòæ   ΓûêΓûêΓòæΓûêΓûêΓòæΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓòù          Γòæ
+   Γòæ    ΓûêΓûê   ΓûêΓûêΓòæΓûêΓûêΓòöΓòÉΓòÉΓûêΓûêΓòæΓûêΓûêΓòöΓòÉΓòÉΓûêΓûêΓòùΓòÜΓûêΓûêΓòù ΓûêΓûêΓòöΓò¥ΓûêΓûêΓòæΓòÜΓòÉΓòÉΓòÉΓòÉΓûêΓûêΓòæ          Γòæ
+   Γòæ    ΓòÜΓûêΓûêΓûêΓûêΓûêΓòöΓò¥ΓûêΓûêΓòæ  ΓûêΓûêΓòæΓûêΓûêΓòæ  ΓûêΓûêΓòæ ΓòÜΓûêΓûêΓûêΓûêΓòöΓò¥ ΓûêΓûêΓòæΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓòæ          Γòæ
+   Γòæ     ΓòÜΓòÉΓòÉΓòÉΓòÉΓò¥ ΓòÜΓòÉΓò¥  ΓòÜΓòÉΓò¥ΓòÜΓòÉΓò¥  ΓòÜΓòÉΓò¥  ΓòÜΓòÉΓòÉΓòÉΓò¥  ΓòÜΓòÉΓò¥ΓòÜΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓò¥          Γòæ
+   Γòæ                                                          Γòæ
+   Γòæ          Just A Rather Very Intelligent System           Γòæ
+   Γòæ                                                          Γòæ
+   ΓòÜΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓò¥
+
+    
+
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]
+Loading weights: 100%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûê| 103/103 [00:00<00:00, 5229.81it/s]
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [STARTUP] 1/5 Embedding model loaded in 6.43s
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Total learning data files loaded: 0
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_005e8be6bac640638c79ef54c4cf2681.json (52 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_04683ba4c11b406f8d76e2f61ebb9e70.json (20 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_08fabaf820bf4bb8a36fac18c5241c50.json (16 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_099b6a4fdfd14d03bb48da53c65642af.json (6 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_0ec92043e43146c09227d745e57b66c1.json (30 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_11fbfb40cd9b4e23a49f60a9f2587773.json (20 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_190a2b293f6d442f9ab45fa64cfc7c70.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_1ae852aa39ff454282e73ac612526298.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_1c7fce6c5eab424ab2762132b69b2a6d.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_1d515853bdb343e7bbb44aad6ebca34c.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_2cc5db9d2b564f4d970edd568b12a526.json (12 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_2e2a537358e8467fa97ba98ef34b9f2b.json (12 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_2e69d132d4f14d2fb5c0c1ba9059d4d5.json (30 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_31147a46243447fe841e917f43f95c63.json (16 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_377ae872e61a4302999bc09a5dbb1e3b.json (20 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_39d56474df0a4cad8bb2950dde6efee3.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_482a6112768c4746a862be6ab19853fb.json (4 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_4a2c82b8594b4c6ca23f7c15240f899c.json (4 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_4f59d615548a4d8f8a1b51825c14bbfc.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_4fa03636e2d04a77ac81edaed792b7b8.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_5190eccfce2d4c07892aafed4a6a52ef.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_5307ec4125e74ba98134d1c82eff25a7.json (152 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_532e7c652abc4fe0aeab4206f6653498.json (6 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_540c69e88bd54704b4120205434e27eb.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_544edd98806a40ff8181f7338749c25c.json (8 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_59ecc0b0270a485fa8bc4591757f05ae.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_5f124c0de4644ca683a7c47d20d5baf7.json (20 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_5f382854c114456ab4ac358fc52e2e21.json (10 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_62c03139e8dc47d4aa53b0ee8333a0b3.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_68446ff94551436bb03669bee250c3f5.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_709a3fd5058f434a9410bc80017c6609.json (16 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_7176234301674127bccfa8884cf6eda7.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_7252c749c1dd49bcae7249431fbd2bcb.json (26 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_72e35cab8bbd4915bab36df819003e42.json (18 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_769a36be4951422fab374a34f87e47bc.json (8 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_772cb7f05a9c4dfcb771c5557c56c035.json (20 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_78c685cb7b084a4da5a9eafc7e8cd4f0.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_7a64b322fd784274980110dfe07b4636.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_7e447105b7f84ca8aa0a32d47970bc91.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_7f75f5e22d024bd5b0dd73ee15b4b8df.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_809ea45b2dc940f9a0edebd762a38e63.json (10 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_82994aae0cea445bb058175fe3e44c31.json (20 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_82fd32f043724a83a64b8538ce7c4669.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_83e68bcf5b1b44ffadb0c6f0857a5025.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_8518fac888cc424faf450dce75bb7ae4.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_864a252fc22e477bac918588ae1a02dd.json (32 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_898b4a02deda4b1bbcafe0ae470d7b91.json (10 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_91052e63cceb45eb95088086a9edea05.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_98287f8cc1fb45eb8e9e90492eef3f81.json (36 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_9910690037aa4f33adbac2fc84865deb.json (18 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_9af393f1f958490faec17aa4973b47ab.json (4 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_9c043d54e7294aacba4e4865cce414b0.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_9cac899cdfee42e4b12cae3e10087708.json (6 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_a4968a27888e4d01a9c54b7c5084e75d.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_a622ffe157014e059c97fbd83e51e165.json (18 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_a6c6143ba7334ba5ad4d0b07ae53c92f.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_a8e400a280034b64881a1f8430634a7c.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_a91bd923298b4b14871ef5eb56c834bc.json (14 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_a98e8d9f79f945b3b283b32b59de4763.json (52 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_ac38017e19fa40ee9d45bb4218b5730f.json (8 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_b052818f903d4c809b7362644ecd7ba0.json (4 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_b1f3a67f12a14c6a866600177b6e7dca.json (8 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_b2603752803b40cfa0767306d749c025.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_b503141851d945228e6368ea4e7f63e3.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_b6ed1162d6794b43800a5e404c5fd5fb.json (12 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_b7a9eab39b1949ed970f7db5a4bdc8ac.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_bd3c4d08685c49a78c249ae5aebae8ea.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_c37385fa4f31409c9df64aa0eda0d836.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_c3a14a269d304ca8b9abf379b7310c38.json (4 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_c3e98be122fd4a7797da80f36b931580.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_cb65900e18334c5abc7b6bd8343fe485.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_cc8ad5d001854abbb5d62d36ecc1cf7a.json (10 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_d058f6170c5a480aab7e98411cfaabd3.json (10 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_d1c79e4872dd4baba7f16df8d69912bb.json (6 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_d296725405704276ac4915ad33f343e6.json (18 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_d502bd59ade644cfbda253090abae4af.json (52 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_d66ccc50dca44bb9920ca331c4a4e41b.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_d730f43692b6478a95f3cef672a3fe37.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_d845f48cf8ec4a1c88ceafe1203433ba.json (28 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_e1acdcee730b4812816bdb5d498a3b01.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_e24a934cb8d14a5abcf9a7837e7bd561.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_e4bd784d269e4fd5bdd0568067a455ea.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_e50548e6a164493f98e5d285565305c9.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_e5078fc06ee042ee852bc6c20c25e895.json (20 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_f038799370844728ae52507dc1307dbe.json (20 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_f234f49edbf44e75928a2cbcf64c4798.json (14 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_fbb51e8f127646cb9714ff8ba3f2f760.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_1781527802.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_1781527837.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_1781527871.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_1781527876.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_1781527905.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_1781527910.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_1781527939.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_1781527944.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_1781527973.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_1781527975.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_1781527992.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_1781528026.json (2 messages)
+2026-07-05 04:10:51 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_1781528031.json (2 messages)
+2026-07-05 04:10:52 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_1781528042.json (2 messages)
+2026-07-05 04:10:52 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_1781528059.json (2 messages)
+2026-07-05 04:10:52 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_1781528093.json (2 messages)
+2026-07-05 04:10:52 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_1781528098.json (2 messages)
+2026-07-05 04:10:52 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_session_1.json (2 messages)
+2026-07-05 04:10:52 | INFO     | J.A.R.V.I.S          | [VECTOR] Loaded chat history: chat_test_session_2.json (2 messages)
+2026-07-05 04:10:52 | INFO     | J.A.R.V.I.S          | [VECTOR] Total chat history files loaded: 106
+2026-07-05 04:10:52 | INFO     | J.A.R.V.I.S          | [VECTOR] Total documents to index: 106 (learning: 0, chat: 106)
+2026-07-05 04:10:52 | INFO     | J.A.R.V.I.S          | [VECTOR] Split into 148 chunks (chunk_size=1000, overlap=200)
+2026-07-05 04:10:55 | INFO     | J.A.R.V.I.S          | [VECTOR] FAISS index built successfully with 148 vectors
+2026-07-05 04:10:55 | INFO     | J.A.R.V.I.S          | [STARTUP] 2/5 Vector index built in 4.48s
+2026-07-05 04:10:59 | INFO     | J.A.R.V.I.S          | Initialized GroqService with 8 API key(s) (primary-first fallback)
+2026-07-05 04:11:18 | INFO     | J.A.R.V.I.S          | [GEMINI] GroqService secondary provider ready with 10 key(s)
+2026-07-05 04:11:20 | INFO     | J.A.R.V.I.S          | Initialized GroqService with 8 API key(s) (primary-first fallback)
+2026-07-05 04:11:20 | INFO     | J.A.R.V.I.S          | [GEMINI] GroqService secondary provider ready with 10 key(s)
+2026-07-05 04:11:20 | INFO     | J.A.R.V.I.S          | [REALTIME] Using user location from env: Dehradun
+2026-07-05 04:11:20 | INFO     | J.A.R.V.I.S          | Serper (Google Search) initialized with 2 API key(s)
+2026-07-05 04:11:21 | INFO     | J.A.R.V.I.S          | [GEMINI] Realtime fast-extract ready: 10 key(s) (RACE mode ON)
+2026-07-05 04:11:24 | INFO     | J.A.R.V.I.S          | [BRAIN] Category classifier initialized (openai/gpt-oss-20b) with 8 key(s)
+2026-07-05 04:11:24 | INFO     | J.A.R.V.I.S          | [BRAIN] Gemini classifier ready with 10 key(s) (failover only; routing is not raced)
+2026-07-05 04:11:24 | INFO     | J.A.R.V.I.S          | [VISION] Groq vision initialized (meta-llama/llama-4-scout-17b-16e-instruct)
+2026-07-05 04:11:24 | INFO     | J.A.R.V.I.S          | [STARTUP] 3/5 LLM services (Groq + Realtime + Brain + Vision) ready in 28.69s
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini fallback clients ready: 10
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [AGENT] Loop initialized | primary=Gemini/gemini-2.5-flash | tools=70 | gemini_keys=10 | groq_keys=8
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [STARTUP] 4/5 Agent loop + 70 tools ready in 2.91s
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [SKILL] store ready (C:\Users\ayush_lr8ru2y\Downloads\jarvis-2-main\jarvis-2-main\database\skills.db, N=3).
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [BUS] subscribed 'action.done' -> Checker._on_action_done
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [BUS] subscribed 'verified' -> SkillMaker._on_verified
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [BUS] subscribed 'verified' -> Learner._on_verified
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [BUS] subscribed 'verified' -> Phase4Coordinator._remember_verified
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [BUS] subscribed 'learner.needs_confirmation' -> Phase4Coordinator.start.<locals>.<lambda>
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [BUS] subscribed 'learner.stuck' -> Phase4Coordinator.start.<locals>.<lambda>
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [PHASE4] online -- Checker(with vision) + Skill-maker(N=3) + Learner(maxRetry=2).
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [BUS] subscribed 'plan.started' -> Phase5Coordinator._on_plan_started
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [BUS] subscribed 'plan.step' -> Phase5Coordinator._on_plan_step
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [BUS] subscribed 'plan.done' -> Phase5Coordinator._on_plan_done
+C:\Users\ayush_lr8ru2y\Downloads\jarvis-2-main\jarvis-2-main\.venv\Lib\site-packages\pywinauto\__init__.py:80: UserWarning: Revert to STA COM threading mode
+  warnings.warn("Revert to STA COM threading mode", UserWarning)
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [UIA] backend ready: pywinauto
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [PHASE5] coordinator online (planner=True, uia=True).
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [CACHE] command cache ready (C:\Users\ayush_lr8ru2y\Downloads\jarvis-2-main\jarvis-2-main\database\command_cache.db, max=500).
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [BUS] subscribed 'verified' -> Phase6Coordinator._on_verified
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [CACHE] Phase 6 online -- verified-only command cache ready.
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [BUS] subscribed 'app.opened' -> ProactiveEngine._make_handler.<locals>._handler
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [BUS] subscribed 'window.focused' -> ProactiveEngine._make_handler.<locals>._handler
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [BUS] subscribed 'clipboard.changed' -> ProactiveEngine._make_handler.<locals>._handler
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [BUS] subscribed 'settings.changed' -> ProactiveEngine._make_handler.<locals>._handler
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [PROACTIVE] Phase 7 online -- suggest-only=True, interval=45s.
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [USERMODEL] Phase 8 online -- min_observations=3.
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | [STARTUP] 5/5 Chat service ready in 0.00s
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | ============================================================
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | J.A.R.V.I.S ONLINE in 43.13s total  |  70 tools  |  8 Groq keys  |  Gemini: ON  |  Serper: ON
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | Frontend: http://localhost:8000/jarvis/   |   API: http://localhost:8000
+2026-07-05 04:11:27 | INFO     | J.A.R.V.I.S          | ============================================================
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+2026-07-05 04:12:18 | INFO     | J.A.R.V.I.S          | [REQUEST] GET /health -> 200 (0.001s)
+2026-07-05 04:12:37 | INFO     | J.A.R.V.I.S          | [REQUEST] GET /jarvis/ -> 200 (0.055s)
+2026-07-05 04:12:39 | INFO     | J.A.R.V.I.S          | [REQUEST] GET /watcher -> 200 (0.037s)
+2026-07-05 04:12:41 | INFO     | J.A.R.V.I.S          | [REQUEST] GET /dashboard -> 200 (0.033s)
+2026-07-05 04:15:12 | INFO     | J.A.R.V.I.S          | [API /api/startup-brief/stream] Incoming | session_id=new
+2026-07-05 04:15:13 | INFO     | J.A.R.V.I.S          | [REQUEST] GET /api/startup-brief/stream -> 200 (0.002s)
+2026-07-05 04:15:13 | INFO     | J.A.R.V.I.S          | [STARTUP-STREAM] Session: fbc83aad-fd9
+2026-07-05 04:15:13 | INFO     | J.A.R.V.I.S          | [GOOGLE] Loaded saved token from C:\Users\ayush_lr8ru2y\Downloads\jarvis-2-main\jarvis-2-main\database\google_token.json
+2026-07-05 04:15:13 | INFO     | J.A.R.V.I.S          | [GOOGLE] Saved token is missing required scopes. Re-authentication is needed.
+2026-07-05 04:15:13 | INFO     | J.A.R.V.I.S          | [STARTUP-STREAM] Email status unavailable: Google account is not authenticated yet.
+2026-07-05 04:15:13 | INFO     | J.A.R.V.I.S          | [GOOGLE] Loaded saved token from C:\Users\ayush_lr8ru2y\Downloads\jarvis-2-main\jarvis-2-main\database\google_token.json
+2026-07-05 04:15:13 | WARNING  | J.A.R.V.I.S          | [GOOGLE] Token refresh failed: ('invalid_grant: Bad Request', {'error': 'invalid_grant', 'error_description': 'Bad Request'})
+2026-07-05 04:15:13 | INFO     | J.A.R.V.I.S          | [STARTUP-STREAM] Calendar status unavailable: Google account is not authenticated yet.
+2026-07-05 04:15:17 | INFO     | J.A.R.V.I.S          | [REALTIME] Location-grounded query: 'current weather' -> 'current weather, Dehradun'
+2026-07-05 04:15:17 | INFO     | J.A.R.V.I.S          | [REALTIME] Query extraction: 'Please search the current weather and give me a 6-sentence startup briefing in E' -> 'current weather, Dehradun' (3.562s)
+2026-07-05 04:15:17 | INFO     | J.A.R.V.I.S          | [REALTIME] Searching Serper for: current weather, Dehradun
+2026-07-05 04:15:18 | INFO     | J.A.R.V.I.S          | [SERPER] 5 organic results, answerBox: yes, knowledgeGraph: no, formatted: 1809 chars (1.768s)
+2026-07-05 04:15:18 | INFO     | J.A.R.V.I.S          | [REALTIME] Serper returned results (length: 1809 chars)
+2026-07-05 04:15:18 | INFO     | J.A.R.V.I.S          | [CONTEXT] Retrieved 5 chunks from sources: ['chat_chat_a4968a27888e4d01a9c54b7c5084e75d', 'chat_chat_190a2b293f6d442f9ab45fa64cfc7c70', 'chat_chat_62c03139e8dc47d4aa53b0ee8333a0b3', 'chat_chat_7176234301674127bccfa8884cf6eda7', 'chat_chat_83e68bcf5b1b44ffadb0c6f0857a5025']
+2026-07-05 04:15:18 | INFO     | J.A.R.V.I.S          | [TIMING] vector_db: 0.028s
+2026-07-05 04:15:18 | INFO     | J.A.R.V.I.S          | [PROMPT] System message length: 8614 chars | History pairs: 0 | Question: Please search the current weather and give me a 6-sentence startup briefing in English.
+Line 1: Say 
+2026-07-05 04:15:18 | INFO     | J.A.R.V.I.S          | Streaming with API key #1/8: gsk_P2ZM...pewL
+2026-07-05 04:15:20 | INFO     | J.A.R.V.I.S          | [TIMING] first_chunk: 1.101s
+2026-07-05 04:15:20 | INFO     | J.A.R.V.I.S          | [TTS-CACHE] Hit  'Good morning,'
+2026-07-05 04:15:20 | INFO     | J.A.R.V.I.S          | [TTS-CACHE] Miss 'July 5,' -> fetching online...
+2026-07-05 04:15:20 | INFO     | J.A.R.V.I.S          | [TTS-CACHE] Hit  'Ayush.'
+2026-07-05 04:15:20 | INFO     | J.A.R.V.I.S          | [TTS-CACHE] Hit  'Today is Sunday,'
+2026-07-05 04:15:20 | INFO     | J.A.R.V.I.S          | [TTS-CACHE] Hit  '2026.'
+2026-07-05 04:15:20 | INFO     | J.A.R.V.I.S          | [TTS-CACHE] Miss 'Morning is cool with light rain around 26ΓÇ»┬░C,' -> fetching online...
+2026-07-05 04:15:20 | INFO     | J.A.R.V.I.S          | [TTS-CACHE] Miss 'afternoon stays cloudy with similar temperatures' -> fetching online...
+2026-07-05 04:15:20 | INFO     | J.A.R.V.I.S          | [TTS-CACHE] Miss 'and evening will be partly clear cooling to abou' -> fetching online...
+2026-07-05 04:15:20 | INFO     | J.A.R.V.I.S          | [TIMING] groq_stream_total: 1.303s (chunks: 85)
+2026-07-05 04:15:20 | INFO     | J.A.R.V.I.S          | [REALTIME] Stream completed for: current weather, Dehradun
+2026-07-05 04:15:20 | INFO     | J.A.R.V.I.S          | [STARTUP-STREAM] Completed | Chunks: 85
+2026-07-05 04:15:21 | INFO     | J.A.R.V.I.S          | [TTS-CACHE] Saved 'July 5,'
+2026-07-05 04:15:21 | INFO     | J.A.R.V.I.S          | [TTS-CACHE] Miss 'Carry a light rain jacket or umbrella if youΓÇÖll ' -> fetching online...
+2026-07-05 04:15:21 | INFO     | J.A.R.V.I.S          | [TTS-CACHE] Saved 'and evening will be partly clear cooling to abou'
+2026-07-05 04:15:21 | INFO     | J.A.R.V.I.S          | [TTS-CACHE] Saved 'afternoon stays cloudy with similar temperatures'
+2026-07-05 04:15:21 | INFO     | J.A.R.V.I.S          | [TTS-CACHE] Hit  'Your email status is unavailable right now.'
+2026-07-05 04:15:21 | INFO     | J.A.R.V.I.S          | [TTS-CACHE] Hit  'Your calendar status is unavailable right now.'
+2026-07-05 04:15:21 | INFO     | J.A.R.V.I.S          | [TTS-CACHE] Saved 'Morning is cool with light rain around 26ΓÇ»┬░C,'
+2026-07-05 04:15:22 | INFO     | J.A.R.V.I.S          | [TTS-CACHE] Saved 'Carry a light rain jacket or umbrella if youΓÇÖll '
+2026-07-05 04:17:53 | INFO     | J.A.R.V.I.S          | [TTS-API] Cache miss 'This is a unique test sentence for cache verificat' -> synthesizing online...
+2026-07-05 04:17:53 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /tts -> 200 (0.006s)
+2026-07-05 04:17:55 | INFO     | J.A.R.V.I.S          | [TTS-API] Saved to cache 'This is a unique test sentence for cache verificat'
+2026-07-05 04:18:29 | INFO     | J.A.R.V.I.S          | [TTS-API] Cache hit  'This is a unique test sentence for cache verificat'
+2026-07-05 04:18:29 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /tts -> 200 (0.003s)
+2026-07-05 04:18:41 | INFO     | J.A.R.V.I.S          | [TTS-API] Cache hit  'This is a unique test sentence for cache verificat'
+2026-07-05 04:18:41 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /tts -> 200 (0.003s)
+2026-07-05 04:23:44 | INFO     | J.A.R.V.I.S          | [API /chat/jarvis/stream] Incoming | session_id=realmachine_test_1 | message_len=12 | img=no | message=open notepad
+2026-07-05 04:23:44 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /chat/jarvis/stream -> 200 (0.003s)
+2026-07-05 04:23:44 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Session: realmachine_ | User: open notepad | img: no
+2026-07-05 04:23:45 | INFO     | J.A.R.V.I.S          | [BRAIN-PRIMARY] open notepad -> task (344 ms, llm)
+2026-07-05 04:23:45 | INFO     | J.A.R.V.I.S          | [CACHE-HIT] open notepad -> open_application({'app_name': 'notepad'})
+2026-07-05 04:23:45 | INFO     | J.A.R.V.I.S          | [DESKTOP] Opened application: notepad -> notepad
+2026-07-05 04:23:45 | INFO     | J.A.R.V.I.S          | [WATCHER] launch 'notepad' -> pid(s)=[8220, 19176] exe=notepad.exe
+2026-07-05 04:23:45 | INFO     | J.A.R.V.I.S          | [DESKTOP] Tracked 'notepad' as pid(s) [8220, 19176]
+2026-07-05 04:23:45 | INFO     | J.A.R.V.I.S          | [CHECKER] verifying 'open_application' (ok=True)...
+2026-07-05 04:23:45 | INFO     | J.A.R.V.I.S          | [TIMING] route=task(cache) | total=0.98s
+2026-07-05 04:23:47 | INFO     | J.A.R.V.I.S          | [CHECKER] 'open_application' -> PASS | 'notepad' is open [evidence: window/app: notepad] | via watcher
+2026-07-05 04:23:47 | INFO     | J.A.R.V.I.S          | [CACHE] stored tool entry: 'open notepad'
+2026-07-05 04:24:29 | INFO     | J.A.R.V.I.S          | [API /chat/jarvis/stream] Incoming | session_id=realmachine_test_1 | message_len=15 | img=no | message=open calculator
+2026-07-05 04:24:29 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /chat/jarvis/stream -> 200 (0.004s)
+2026-07-05 04:24:29 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Session: realmachine_ | User: open calculator | img: no
+2026-07-05 04:24:29 | INFO     | J.A.R.V.I.S          | [BRAIN-PRIMARY] open calculator -> task (322 ms, llm)
+2026-07-05 04:24:29 | INFO     | J.A.R.V.I.S          | [CACHE-HIT] open calculator -> open_application({'app_name': 'calculator'})
+2026-07-05 04:24:29 | INFO     | J.A.R.V.I.S          | [DESKTOP] Opened application: calculator -> calc
+2026-07-05 04:24:30 | INFO     | J.A.R.V.I.S          | [WATCHER] launch 'calculator' -> pid(s)=[3284, 10624] exe=calc.exe
+2026-07-05 04:24:30 | INFO     | J.A.R.V.I.S          | [DESKTOP] Tracked 'calculator' as pid(s) [3284, 10624]
+2026-07-05 04:24:30 | INFO     | J.A.R.V.I.S          | [TIMING] route=task(cache) | total=0.95s
+2026-07-05 04:24:30 | INFO     | J.A.R.V.I.S          | [CHECKER] verifying 'open_application' (ok=True)...
+2026-07-05 04:24:32 | INFO     | J.A.R.V.I.S          | [CHECKER] 'open_application' -> PASS | 'calculator' is open [evidence: window/app: calculator] | via watcher
+2026-07-05 04:24:32 | INFO     | J.A.R.V.I.S          | [CACHE] stored tool entry: 'open calculator'
+2026-07-05 04:24:55 | INFO     | J.A.R.V.I.S          | [API /chat/jarvis/stream] Incoming | session_id=realmachine_test_1 | message_len=13 | img=no | message=close notepad
+2026-07-05 04:24:55 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /chat/jarvis/stream -> 200 (0.002s)
+2026-07-05 04:24:55 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Session: realmachine_ | User: close notepad | img: no
+2026-07-05 04:24:55 | INFO     | J.A.R.V.I.S          | [BRAIN-PRIMARY] close notepad -> task (421 ms, llm)
+2026-07-05 04:24:55 | INFO     | J.A.R.V.I.S          | [CACHE-HIT] close notepad -> close_application({'app_name': 'notepad'})
+2026-07-05 04:24:55 | INFO     | J.A.R.V.I.S          | [DESKTOP] Closed via watcher: notepad (pids=[19176])
+2026-07-05 04:24:55 | INFO     | J.A.R.V.I.S          | [CHECKER] verifying 'close_application' (ok=True)...
+2026-07-05 04:24:55 | INFO     | J.A.R.V.I.S          | [TIMING] route=task(cache) | total=0.44s
+2026-07-05 04:24:57 | INFO     | J.A.R.V.I.S          | [CHECKER] 'close_application' -> PASS | 'notepad' is closed [evidence: no matching window/app] | via watcher
+2026-07-05 04:24:57 | INFO     | J.A.R.V.I.S          | [CACHE] stored tool entry: 'close notepad'
+2026-07-05 04:25:09 | INFO     | J.A.R.V.I.S          | [API /chat/jarvis/stream] Incoming | session_id=realmachine_test_1 | message_len=16 | img=no | message=close calculator
+2026-07-05 04:25:09 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /chat/jarvis/stream -> 200 (0.001s)
+2026-07-05 04:25:09 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Session: realmachine_ | User: close calculator | img: no
+2026-07-05 04:25:09 | INFO     | J.A.R.V.I.S          | [BRAIN-PRIMARY] close calculator -> task (477 ms, llm)
+2026-07-05 04:25:09 | INFO     | J.A.R.V.I.S          | [CACHE-HIT] close calculator -> close_application({'app_name': 'calculator'})
+2026-07-05 04:25:09 | INFO     | J.A.R.V.I.S          | [DESKTOP] Closed via watcher: calculator (pids=[10624])
+2026-07-05 04:25:09 | INFO     | J.A.R.V.I.S          | [CHECKER] verifying 'close_application' (ok=True)...
+2026-07-05 04:25:09 | INFO     | J.A.R.V.I.S          | [TIMING] route=task(cache) | total=0.50s
+2026-07-05 04:25:11 | INFO     | J.A.R.V.I.S          | [CHECKER] 'close_application' -> PASS | 'calculator' is closed [evidence: no matching window/app] | via watcher
+2026-07-05 04:25:11 | INFO     | J.A.R.V.I.S          | [CACHE] stored tool entry: 'close calculator'
+2026-07-05 04:25:30 | INFO     | J.A.R.V.I.S          | [API /chat/jarvis/stream] Incoming | session_id=realmachine_test_1 | message_len=14 | img=no | message=close settings
+2026-07-05 04:25:30 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /chat/jarvis/stream -> 200 (0.002s)
+2026-07-05 04:25:30 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Session: realmachine_ | User: close settings | img: no
+2026-07-05 04:25:31 | INFO     | J.A.R.V.I.S          | [BRAIN-PRIMARY] close settings -> task (530 ms, llm)
+2026-07-05 04:25:33 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #2
+2026-07-05 04:25:33 | INFO     | J.A.R.V.I.S          | [DESKTOP] Closed via watcher: settings (pids=[10360])
+2026-07-05 04:25:33 | INFO     | J.A.R.V.I.S          | [CHECKER] verifying 'close_application' (ok=True)...
+2026-07-05 04:25:35 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #3
+2026-07-05 04:25:35 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Agent flow done in 4.38s | actions: False
+2026-07-05 04:25:39 | INFO     | J.A.R.V.I.S          | [CHECKER] 'close_application' -> FAIL | 'settings' is still open [evidence: still present: Settings - jarvis-2-main - Kiro] | via watcher
+2026-07-05 04:25:39 | INFO     | J.A.R.V.I.S          | [LEARNER] 'close settings' verify FAIL ('settings' is still open). Yeh safe-but-not-repeatable hai, maine retry nahi kiya -- aap bata dein.
+2026-07-05 04:26:20 | INFO     | J.A.R.V.I.S          | [API /chat/jarvis/stream] Incoming | session_id=realmachine_test_1 | message_len=16 | img=no | message=wifi on hai kya?
+2026-07-05 04:26:20 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /chat/jarvis/stream -> 200 (0.001s)
+2026-07-05 04:26:20 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Session: realmachine_ | User: wifi on hai kya? | img: no
+2026-07-05 04:26:21 | INFO     | J.A.R.V.I.S          | [BRAIN-PRIMARY] wifi on hai kya? -> task (614 ms, llm)
+2026-07-05 04:26:23 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #4
+2026-07-05 04:26:23 | INFO     | J.A.R.V.I.S          | [CHECKER] verifying 'wifi_control' (ok=True)...
+2026-07-05 04:26:25 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #5
+2026-07-05 04:26:25 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Agent flow done in 4.68s | actions: False
+2026-07-05 04:26:29 | INFO     | J.A.R.V.I.S          | [CHECKER] 'wifi_control' -> UNKNOWN | no screenshot | via vision
+2026-07-05 04:26:34 | INFO     | J.A.R.V.I.S          | [API /chat/jarvis/stream] Incoming | session_id=realmachine_test_1 | message_len=16 | img=no | message=wifi on hai kya?
+2026-07-05 04:26:34 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /chat/jarvis/stream -> 200 (0.001s)
+2026-07-05 04:26:34 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Session: realmachine_ | User: wifi on hai kya? | img: no
+2026-07-05 04:26:35 | INFO     | J.A.R.V.I.S          | [BRAIN-PRIMARY] wifi on hai kya? -> task (840 ms, llm)
+2026-07-05 04:26:37 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #6
+2026-07-05 04:26:37 | INFO     | J.A.R.V.I.S          | [CHECKER] verifying 'get_system_status' (ok=True)...
+2026-07-05 04:26:39 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #7
+2026-07-05 04:26:39 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Agent flow done in 4.59s | actions: False
+2026-07-05 04:26:43 | INFO     | J.A.R.V.I.S          | [CHECKER] 'get_system_status' -> UNKNOWN | no verifier for this action | via watcher
+2026-07-05 04:27:01 | INFO     | J.A.R.V.I.S          | [API /chat/jarvis/stream] Incoming | session_id=realmachine_test_1 | message_len=17 | img=no | message=volume kitna hai?
+2026-07-05 04:27:01 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /chat/jarvis/stream -> 200 (0.003s)
+2026-07-05 04:27:01 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Session: realmachine_ | User: volume kitna hai? | img: no
+2026-07-05 04:27:01 | INFO     | J.A.R.V.I.S          | [BRAIN-PRIMARY] volume kitna hai? -> task (578 ms, llm)
+2026-07-05 04:27:03 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #8
+2026-07-05 04:27:04 | INFO     | J.A.R.V.I.S          | [CHECKER] verifying 'get_system_status' (ok=True)...
+2026-07-05 04:27:05 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #9
+2026-07-05 04:27:05 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Agent flow done in 4.50s | actions: False
+2026-07-05 04:27:10 | INFO     | J.A.R.V.I.S          | [CHECKER] 'get_system_status' -> UNKNOWN | no verifier for this action | via watcher
+2026-07-05 04:32:30 | INFO     | J.A.R.V.I.S          | [API /chat/jarvis/stream] Incoming | session_id=realmachine_test_2 | message_len=17 | img=no | message=volume kitna hai?
+2026-07-05 04:32:30 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /chat/jarvis/stream -> 200 (0.004s)
+2026-07-05 04:32:30 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Session: realmachine_ | User: volume kitna hai? | img: no
+2026-07-05 04:32:31 | INFO     | J.A.R.V.I.S          | [BRAIN-PRIMARY] volume kitna hai? -> task (692 ms, llm)
+2026-07-05 04:32:33 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #10
+2026-07-05 04:32:33 | INFO     | J.A.R.V.I.S          | [CHECKER] verifying 'get_system_status' (ok=True)...
+2026-07-05 04:32:35 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #1
+2026-07-05 04:32:35 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Agent flow done in 4.87s | actions: False
+2026-07-05 04:32:40 | INFO     | J.A.R.V.I.S          | [CHECKER] 'get_system_status' -> UNKNOWN | no verifier for this action | via watcher
+2026-07-05 04:33:00 | INFO     | J.A.R.V.I.S          | [API /chat/jarvis/stream] Incoming | session_id=realmachine_test_vol | message_len=9 | img=no | message=volume 50
+2026-07-05 04:33:00 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /chat/jarvis/stream -> 200 (0.002s)
+2026-07-05 04:33:00 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Session: realmachine_ | User: volume 50 | img: no
+2026-07-05 04:33:01 | INFO     | J.A.R.V.I.S          | [BRAIN-PRIMARY] volume 50 -> task (909 ms, llm)
+2026-07-05 04:33:03 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #2
+2026-07-05 04:33:03 | INFO     | J.A.R.V.I.S          | [SYSTEM] Volume set to 50%
+2026-07-05 04:33:03 | INFO     | J.A.R.V.I.S          | [CHECKER] verifying 'set_volume' (ok=True)...
+2026-07-05 04:33:05 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #3
+2026-07-05 04:33:05 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Agent flow done in 4.87s | actions: False
+2026-07-05 04:33:05 | INFO     | J.A.R.V.I.S          | [CHECKER] 'set_volume' -> PASS | volume is 50 (target 50) [evidence: volume=50] | via watcher
+2026-07-05 04:33:05 | INFO     | J.A.R.V.I.S          | [CACHE] stored tool entry: 'volume 50'
+2026-07-05 04:33:07 | INFO     | J.A.R.V.I.S          | [API /chat/jarvis/stream] Incoming | session_id=realmachine_test_vol | message_len=4 | img=no | message=mute
+2026-07-05 04:33:07 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /chat/jarvis/stream -> 200 (0.003s)
+2026-07-05 04:33:07 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Session: realmachine_ | User: mute | img: no
+2026-07-05 04:33:08 | INFO     | J.A.R.V.I.S          | [BRAIN-PRIMARY] mute -> task (622 ms, llm)
+2026-07-05 04:33:08 | INFO     | J.A.R.V.I.S          | [CACHE-HIT] mute -> mute_volume({'mute': True})
+2026-07-05 04:33:08 | INFO     | J.A.R.V.I.S          | [CHECKER] verifying 'mute_volume' (ok=True)...
+2026-07-05 04:33:08 | INFO     | J.A.R.V.I.S          | [TIMING] route=task(cache) | total=0.65s
+2026-07-05 04:33:10 | INFO     | J.A.R.V.I.S          | [CHECKER] 'mute_volume' -> PASS | audio is muted [evidence: muted=True] | via watcher
+2026-07-05 04:33:10 | INFO     | J.A.R.V.I.S          | [CACHE] stored tool entry: 'mute'
+2026-07-05 04:33:11 | INFO     | J.A.R.V.I.S          | [API /chat/jarvis/stream] Incoming | session_id=realmachine_test_vol | message_len=6 | img=no | message=unmute
+2026-07-05 04:33:11 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /chat/jarvis/stream -> 200 (0.001s)
+2026-07-05 04:33:11 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Session: realmachine_ | User: unmute | img: no
+2026-07-05 04:33:12 | INFO     | J.A.R.V.I.S          | [BRAIN-PRIMARY] unmute -> task (578 ms, llm)
+2026-07-05 04:33:13 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #4
+2026-07-05 04:33:13 | INFO     | J.A.R.V.I.S          | [CHECKER] verifying 'mute_volume' (ok=True)...
+2026-07-05 04:33:14 | INFO     | J.A.R.V.I.S          | [API /chat/jarvis/stream] Incoming | session_id=realmachine_test_vol | message_len=9 | img=no | message=volume 50
+2026-07-05 04:33:14 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /chat/jarvis/stream -> 200 (0.001s)
+2026-07-05 04:33:14 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Session: realmachine_ | User: volume 50 | img: no
+2026-07-05 04:33:15 | INFO     | J.A.R.V.I.S          | [CHECKER] 'mute_volume' -> PASS | audio is unmuted [evidence: muted=False] | via watcher
+2026-07-05 04:33:15 | INFO     | J.A.R.V.I.S          | [CACHE] stored tool entry: 'unmute'
+2026-07-05 04:33:15 | INFO     | J.A.R.V.I.S          | [BRAIN-PRIMARY] volume 50 -> task (574 ms, llm)
+2026-07-05 04:33:15 | INFO     | J.A.R.V.I.S          | [CACHE-HIT] volume 50 -> set_volume({'level': 50})
+2026-07-05 04:33:15 | INFO     | J.A.R.V.I.S          | [SYSTEM] Volume set to 50%
+2026-07-05 04:33:15 | INFO     | J.A.R.V.I.S          | [CHECKER] verifying 'set_volume' (ok=True)...
+2026-07-05 04:33:15 | INFO     | J.A.R.V.I.S          | [TIMING] route=task(cache) | total=0.60s
+2026-07-05 04:33:15 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #5
+2026-07-05 04:33:15 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Agent flow done in 4.26s | actions: False
+2026-07-05 04:33:17 | INFO     | J.A.R.V.I.S          | [CHECKER] 'set_volume' -> PASS | volume is 50 (target 50) [evidence: volume=50] | via watcher
+2026-07-05 04:33:17 | INFO     | J.A.R.V.I.S          | [CACHE] stored tool entry: 'volume 50'
+2026-07-05 04:33:18 | INFO     | J.A.R.V.I.S          | [API /chat/jarvis/stream] Incoming | session_id=realmachine_test_vol | message_len=9 | img=no | message=volume 20
+2026-07-05 04:33:18 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /chat/jarvis/stream -> 200 (0.002s)
+2026-07-05 04:33:18 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Session: realmachine_ | User: volume 20 | img: no
+2026-07-05 04:33:22 | INFO     | J.A.R.V.I.S          | [BRAIN-PRIMARY] volume 20 -> task (4117 ms, llm)
+2026-07-05 04:33:24 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #6
+2026-07-05 04:33:24 | INFO     | J.A.R.V.I.S          | [SYSTEM] Volume set to 20%
+2026-07-05 04:33:24 | INFO     | J.A.R.V.I.S          | [CHECKER] verifying 'set_volume' (ok=True)...
+2026-07-05 04:33:26 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #7
+2026-07-05 04:33:26 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Agent flow done in 7.85s | actions: False
+2026-07-05 04:33:26 | INFO     | J.A.R.V.I.S          | [CHECKER] 'set_volume' -> PASS | volume is 20 (target 20) [evidence: volume=20] | via watcher
+2026-07-05 04:33:26 | INFO     | J.A.R.V.I.S          | [CACHE] stored tool entry: 'volume 20'
+2026-07-05 04:33:29 | INFO     | J.A.R.V.I.S          | [API /chat/jarvis/stream] Incoming | session_id=realmachine_test_vol | message_len=9 | img=no | message=volume 80
+2026-07-05 04:33:29 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /chat/jarvis/stream -> 200 (0.004s)
+2026-07-05 04:33:29 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Session: realmachine_ | User: volume 80 | img: no
+2026-07-05 04:33:29 | INFO     | J.A.R.V.I.S          | [BRAIN-PRIMARY] volume 80 -> task (575 ms, llm)
+2026-07-05 04:33:31 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #8
+2026-07-05 04:33:31 | INFO     | J.A.R.V.I.S          | [SYSTEM] Volume set to 80%
+2026-07-05 04:33:31 | INFO     | J.A.R.V.I.S          | [CHECKER] verifying 'set_volume' (ok=True)...
+2026-07-05 04:33:33 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #9
+2026-07-05 04:33:33 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Agent flow done in 3.84s | actions: False
+2026-07-05 04:33:33 | INFO     | J.A.R.V.I.S          | [CHECKER] 'set_volume' -> PASS | volume is 80 (target 80) [evidence: volume=80] | via watcher
+2026-07-05 04:33:33 | INFO     | J.A.R.V.I.S          | [CACHE] stored tool entry: 'volume 80'
+2026-07-05 04:35:18 | INFO     | J.A.R.V.I.S          | [API /chat/jarvis/stream] Incoming | session_id=realmachine_test_danger | message_len=46 | img=no | message=delete the file _jarvis_delete_test_target.txt
+2026-07-05 04:35:18 | INFO     | J.A.R.V.I.S          | [REQUEST] POST /chat/jarvis/stream -> 200 (0.003s)
+2026-07-05 04:35:18 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Session: realmachine_ | User: delete the file _jarvis_delete_test_target.txt | img: no
+2026-07-05 04:35:19 | INFO     | J.A.R.V.I.S          | [BRAIN-PRIMARY] delete the file _jarvis_delete_test_target.txt -> task (931 ms, llm)
+2026-07-05 04:35:21 | INFO     | J.A.R.V.I.S          | [AGENT] Gemini primary completion on key #10
+2026-07-05 04:35:21 | INFO     | J.A.R.V.I.S          | [JARVIS-STREAM] Awaiting confirmation for delete_file

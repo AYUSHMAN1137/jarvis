@@ -22,7 +22,9 @@ let recognition = null;
 let ttsPlayer = null;
 const SETTINGS_KEY = 'jarvis_settings';
 const DEFAULT_SETTINGS = { autoOpenActivity: true, autoOpenSearchResults: true, thinkingSounds: true };
-const PRE_STARTER_FILES = ['starter_1', 'starter_2', 'starter_3', 'starter_4', 'starter_5', 'starter_6', 'starter_7', 'starter_8', 'starter_9', 'starter_10'];
+// Thinking-cue phrases. These ride the SAME /tts voice cache as every other
+// JARVIS line -- no separate pre-generated files, no separate generator script.
+const PRE_STARTER_PHRASES = ['One moment please.', 'Sure, one moment.', 'Got it, hold on.', 'On it right now.', 'Alright, give me a sec.', 'Right, one moment.', 'Okay, hold on.', 'One second please.', 'Give me a moment.', 'Just a moment please.'];
 let PRE_STARTER_CACHE = {};
 let settings = { ...DEFAULT_SETTINGS };
 const $ = id => document.getElementById(id);
@@ -74,13 +76,13 @@ class PreStarterPlayer {
         this.audio.preload = 'auto';
     }
     play(onComplete) {
-        const loaded = PRE_STARTER_FILES.filter(f => PRE_STARTER_CACHE[f]);
+        const loaded = PRE_STARTER_PHRASES.filter(p => PRE_STARTER_CACHE[p]);
         if (loaded.length === 0) {
             if (onComplete) onComplete();
             return;
         }
-        const file = loaded[Math.floor(Math.random() * loaded.length)];
-        const base64 = PRE_STARTER_CACHE[file];
+        const phrase = loaded[Math.floor(Math.random() * loaded.length)];
+        const base64 = PRE_STARTER_CACHE[phrase];
         if (!base64) {
             if (onComplete) onComplete();
             return;
@@ -215,10 +217,29 @@ function init() {
 }
 
 let startupBriefPlayed = false;
+let startupBriefController = null;
+let startupBriefDone = false;
+
+/** Immediately stop the daily startup greeting (text stream + TTS audio) when
+ *  the user interrupts by sending a message or starting to speak. Once stopped
+ *  it will NOT resume. */
+function stopStartupBrief() {
+    startupBriefDone = true;
+    if (startupBriefController) {
+        try { startupBriefController.abort(); } catch (_) {}
+        startupBriefController = null;
+    }
+    if (ttsPlayer && ttsPlayer.playing) {
+        ttsPlayer.stop();
+        ttsPlayer.stopped = false;
+    }
+}
 
 function playStartupBrief() {
     if (startupBriefPlayed) return;
     startupBriefPlayed = true;
+    startupBriefDone = false;
+    startupBriefController = new AbortController();
 
     // Attach unlock to first interaction to bypass autoplay restrictions
     const unlockAndPlay = () => {
@@ -231,7 +252,7 @@ function playStartupBrief() {
     document.addEventListener('click', unlockAndPlay);
     document.addEventListener('keydown', unlockAndPlay);
 
-    fetch(`${API}/api/startup-brief/stream`)
+    fetch(`${API}/api/startup-brief/stream`, { signal: startupBriefController.signal })
         .then(response => {
             if (!response.ok) throw new Error('Startup brief fetch failed');
             
@@ -240,8 +261,9 @@ function playStartupBrief() {
             let buffer = '';
 
             function readStream() {
+                if (startupBriefDone) { try { reader.cancel(); } catch (_) {} return; }
                 reader.read().then(({ done, value }) => {
-                    if (done) return;
+                    if (done || startupBriefDone) return;
                     buffer += decoder.decode(value, { stream: true });
                     const lines = buffer.split('\n');
                     buffer = lines.pop();
@@ -250,7 +272,7 @@ function playStartupBrief() {
                         if (line.startsWith('data: ')) {
                             try {
                                 const data = JSON.parse(line.substring(6));
-                                if (data.audio && ttsPlayer) {
+                                if (!startupBriefDone && data.audio && ttsPlayer) {
                                     ttsPlayer.enqueue(data.audio);
                                 }
                             } catch (e) {
@@ -267,10 +289,16 @@ function playStartupBrief() {
 }
 
 async function preloadStarterAudio() {
+    // Fetch each phrase through the normal /tts endpoint = the ONE voice cache.
+    // First run: miss -> synthesized + saved on the server. After that: instant hit.
     const base = (typeof window !== 'undefined' && window.location.origin) ? window.location.origin : '';
-    for (const file of PRE_STARTER_FILES) {
+    for (const phrase of PRE_STARTER_PHRASES) {
         try {
-            const r = await fetch(`${base}/app/audio/${file}.mp3`);
+            const r = await fetch(`${base}/tts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: phrase }),
+            });
             if (!r.ok) continue;
             const blob = await r.blob();
             const base64 = await new Promise((resolve, reject) => {
@@ -279,7 +307,7 @@ async function preloadStarterAudio() {
                 reader.onerror = reject;
                 reader.readAsDataURL(blob);
             });
-            if (base64) PRE_STARTER_CACHE[file] = base64;
+            if (base64) PRE_STARTER_CACHE[phrase] = base64;
         } catch (_) {}
     }
 }
@@ -374,6 +402,9 @@ function initPushToTalk() {
 /** Start BOTH MediaRecorder and Web Speech API in parallel */
 async function pttStartRecording() {
     if (isRecording) return;
+
+    // ── Interrupt the daily startup greeting if it's playing ──
+    stopStartupBrief();
 
     // ── Interrupt streaming if active ──
     if (isStreaming && pttStreamController) {
@@ -740,14 +771,30 @@ function handleActions(actions, contentEl) {
     if (!actions) return;
     if (!contentEl) return;
     const safeOpen = url => {
-        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
-            try {
-                const w = window.open(url, '_blank', 'noopener');
-                if (!w) showToast('Pop-up blocked. Please allow pop-ups or copy the URL.');
-            } catch (_) {
-                showToast('Could not open link. Please try again.');
-            }
+        if (!(url && (url.startsWith('http://') || url.startsWith('https://')))) return;
+        let opened = false;
+        try {
+            const w = window.open(url, '_blank', 'noopener');
+            opened = !!w;
+        } catch (_) {
+            opened = false;
         }
+        // Browsers block window.open() that isn't triggered by a direct user
+        // click (our open arrives async over SSE), so ALWAYS add a clickable
+        // link in the chat as a reliable fallback the user can tap.
+        try {
+            const wrap = document.createElement('div');
+            wrap.className = 'msg-actions-links';
+            const a = document.createElement('a');
+            a.href = url;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            a.className = 'msg-action-link';
+            a.textContent = (opened ? '\u2197 Opened: ' : '\u2197 Click to open: ') + url;
+            wrap.appendChild(a);
+            contentEl.appendChild(wrap);
+        } catch (_) {}
+        if (!opened) showToast('Pop-up blocked \u2014 tap the link in the chat to open.');
     };
     (actions.wopens || []).forEach(safeOpen);
     (actions.plays || []).forEach(safeOpen);
@@ -825,85 +872,9 @@ function handleActions(actions, contentEl) {
     }
 }
 
-function handleBackgroundTasks(tasks, contentEl) {
-    if (!tasks || !tasks.length || !contentEl) return;
-    tasks.forEach(task => {
-        const card = document.createElement('div');
-        card.className = 'bg-task-card';
-        card.dataset.taskId = task.task_id;
-        const label = task.type === 'generate image' ? 'Image Generation' : task.type === 'content' ? 'Content Writing' : task.type;
-        const promptText = task.label ? `"${task.label}"` : '';
-        card.innerHTML =
-            '<div class="bg-task-header">' +
-                '<div class="bg-task-spinner"></div>' +
-                '<span class="bg-task-label">' + label + '</span>' +
-                '<span class="bg-task-status">Working...</span>' +
-            '</div>' +
-            (promptText ? '<div class="bg-task-prompt">' + promptText + '</div>' : '');
-        contentEl.appendChild(card);
-        scrollToBottom();
-        pollBackgroundTask(task.task_id, card);
-    });
-}
+// handleBackgroundTasks / pollBackgroundTask / updateTaskCard removed (agent rebuild).
+// Images and content now arrive inline via _actions → handleActions().
 
-function pollBackgroundTask(taskId, cardEl) {
-    let pollCount = 0;
-    const maxPolls = 120;
-    const interval = setInterval(() => {
-        pollCount++;
-        if (pollCount > maxPolls) {
-            clearInterval(interval);
-            updateTaskCard(cardEl, 'failed', 'Timed out');
-            return;
-        }
-        fetch(`${API}/tasks/${encodeURIComponent(taskId)}`)
-            .then(r => {
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                return r.json();
-            })
-            .then(data => {
-                if (data.status === 'completed') {
-                    clearInterval(interval);
-                    updateTaskCard(cardEl, 'completed', data);
-                } else if (data.status === 'failed') {
-                    clearInterval(interval);
-                    updateTaskCard(cardEl, 'failed', data.error || 'Task failed');
-                }
-            })
-            .catch(() => {  });
-    }, 1500);
-}
-
-function updateTaskCard(cardEl, status, data) {
-    if (!cardEl) return;
-    const spinner = cardEl.querySelector('.bg-task-spinner');
-    const statusEl = cardEl.querySelector('.bg-task-status');
-    if (status === 'completed') {
-        if (spinner) spinner.className = 'bg-task-done-icon';
-        if (statusEl) statusEl.textContent = 'Ready!';
-        cardEl.classList.add('bg-task-done');
-        const viewBtn = document.createElement('button');
-        viewBtn.className = 'bg-task-view-btn';
-        viewBtn.textContent = 'Open in new tab';
-        viewBtn.addEventListener('click', () => {
-            const taskId = cardEl.dataset.taskId;
-            window.open(`${window.location.origin}/app/viewer.html?task_id=${taskId}`, '_blank');
-        });
-        cardEl.appendChild(viewBtn);
-        try {
-            const taskId = cardEl.dataset.taskId;
-            const w = window.open(`${window.location.origin}/app/viewer.html?task_id=${taskId}`, '_blank');
-            if (!w) {
-                showToast('Result ready! Click "Open in new tab" to view.');
-            }
-        } catch (_) {  }
-    } else if (status === 'failed') {
-        if (spinner) spinner.className = 'bg-task-fail-icon';
-        if (statusEl) statusEl.textContent = typeof data === 'string' ? data : 'Failed';
-        cardEl.classList.add('bg-task-failed');
-    }
-    scrollToBottom();
-}
 
 function captureFrameAsBase64() {
     if (!camVideo || !camStream || camVideo.readyState < 2) return null;
@@ -972,6 +943,7 @@ async function captureFrameAsBase64Safe() {
 
 async function sendMessageWithImage(text, imgBase64) {
     if (!text || !imgBase64 || isStreaming) return;
+    stopStartupBrief();
     const messageToSend = text + ' ' + CAM_BYPASS_TOKEN;
     addMessage('user', text);
     addTypingIndicator();
@@ -1024,7 +996,6 @@ async function sendMessageWithImage(text, imgBase64) {
                         if (activityPanel && settings.autoOpenActivity) { activityPanel.classList.add('open'); updatePanelOverlay(); }
                     }
                     if (data.actions) handleActions(data.actions, contentEl);
-                    if (data.background_tasks) handleBackgroundTasks(data.background_tasks, contentEl);
                     if ('chunk' in data) {
                         const chunkText = data.chunk || '';
                         fullResponse += chunkText;
@@ -1343,6 +1314,14 @@ const ACTIVITY_STEPS = {
     first_chunk:           { step: 5, label: 'Response ready' },
     tts_cache_hit:         { step: 0, label: 'Voice: Cache hit' },
     tts_cache_miss_saved:  { step: 0, label: 'Voice: Downloaded & saved' },
+    agent_started:         { step: 3, label: 'Agent started' },
+    tool_call:             { step: 0, label: 'Tool call' },
+    tool_result:           { step: 0, label: 'Tool result' },
+    awaiting_confirmation: { step: 0, label: 'Needs confirmation' },
+    agent_done:            { step: 5, label: 'Agent done' },
+    llm_provider:          { step: 0, label: 'Answered by' },
+    provider_failover:     { step: 0, label: 'Failover' },
+    provider_race:         { step: 0, label: 'Race winner' },
 };
 
 function appendActivity(activity) {
@@ -1424,6 +1403,40 @@ function appendActivity(activity) {
         // Blue-tinted sub-item: sentence downloaded online and now saved to disk
         detail = activity.sentence ? `"${activity.sentence}"` : 'Saved to cache';
         item.classList.add('activity-sub', 'route-tts-saved');
+    } else if (activity.event === 'agent_started') {
+        detail = activity.tools != null ? `${activity.tools} tools ready` : 'Agent started';
+        item.classList.add('route-task');
+    } else if (activity.event === 'tool_call') {
+        let argStr = '';
+        if (activity.args && typeof activity.args === 'object') {
+            argStr = Object.entries(activity.args)
+                .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
+                .join(', ');
+        }
+        if (argStr.length > 80) argStr = argStr.slice(0, 80) + '…';
+        const stepTxt = activity.step != null ? `#${activity.step} ` : '';
+        detail = `${stepTxt}${activity.tool || 'tool'}${argStr ? ` (${argStr})` : ''}`;
+        item.classList.add('activity-sub', 'route-task');
+    } else if (activity.event === 'tool_result') {
+        const okTxt = activity.ok === false ? '✗ failed' : '✓ done';
+        const preview = activity.preview ? ` — ${activity.preview}` : '';
+        detail = `${activity.tool || 'tool'}: ${okTxt}${preview}`;
+        item.classList.add('activity-sub', activity.ok === false ? 'route-realtime' : 'route-task');
+    } else if (activity.event === 'awaiting_confirmation') {
+        detail = activity.tool ? `${activity.tool} needs your confirmation` : 'Needs confirmation';
+        item.classList.add('activity-sub', 'route-task');
+    } else if (activity.event === 'agent_done') {
+        detail = activity.steps != null ? `${activity.steps} step${activity.steps === 1 ? '' : 's'}` : 'Done';
+        item.classList.add('route-task');
+    } else if (activity.event === 'llm_provider' || activity.event === 'provider_failover' || activity.event === 'provider_race') {
+        // Which LLM provider/key actually answered (Groq vs Gemini), incl. failover & race winner.
+        detail = activity.message
+            || (activity.key_label ? `${activity.provider || ''} (${activity.key_label})`.trim() : (activity.provider || 'Provider'));
+        item.classList.add('activity-sub');
+        if (activity.provider === 'gemini') item.classList.add('route-gemini');
+        else if (activity.provider === 'groq') item.classList.add('route-groq');
+        else if (activity.provider === 'zai') item.classList.add('route-zai');
+        addRouteClass(activity.route);
     } else {
         detail = activity.message || '';
     }
@@ -1520,6 +1533,8 @@ async function sendMessage(textOverride) {
     const wantsCamera = visionModeOn || isCameraQuery(text) || (camStream && text);
     if (wantsCamera && !text) text = 'What do you see?';
     if (!text || isStreaming) return;
+    // User is interrupting the startup greeting by typing a command — kill it for good.
+    stopStartupBrief();
     if ((isCameraQuery(text) || visionModeOn) && !camStream) {
         try {
             await startCamera();
@@ -1628,9 +1643,6 @@ async function sendMessage(textOverride) {
                     }
                     if (data.actions) {
                         handleActions(data.actions, contentEl);
-                    }
-                    if (data.background_tasks) {
-                        handleBackgroundTasks(data.background_tasks, contentEl);
                     }
                     if ('chunk' in data) {
                         const chunkText = data.chunk || '';

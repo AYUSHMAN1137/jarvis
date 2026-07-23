@@ -8,8 +8,9 @@ from pathlib import Path
 from app.services.groq_service import GroqService, escape_curly_braces, AllGroqApisFailedError
 from app.services.vector_store import VectorStoreService
 from app.services.api_key_monitor import get_api_key_monitor
+from app.services import llm_providers
 from app.utils.retry import with_retry
-from config import REALTIME_CHAT_ADDENDUM, GROQ_API_KEYS, GROQ_MODEL, INTENT_CLASSIFY_MODEL, SERPER_API_KEYS, SERPER_API_KEY
+from config import REALTIME_CHAT_ADDENDUM, GROQ_API_KEYS, GROQ_MODEL, INTENT_CLASSIFY_MODEL, SERPER_API_KEYS, SERPER_API_KEY, GEMINI_BRAIN_MODEL, GEMINI_CLASSIFY_TIMEOUT
 
 _AMBIGUOUS_REF_RE = re.compile(r"\b(it|that|this|those|these|him|her|them|there|here)\b", re.IGNORECASE)
 _EXPLICIT_LOCATION_RE = re.compile(r"\b(in|at|for)\s+([A-Za-z][A-Za-z\s\-]{1,60})\b", re.IGNORECASE)
@@ -62,6 +63,26 @@ class RealtimeGroqService(GroqService):
             )
         else:
             self._fast_llm = None
+
+        # Gemini fast-extract provider (secondary) for query-extraction failover/race
+        self._gemini_fast_llms = []
+        if llm_providers.gemini_enabled():
+            try:
+                self._gemini_fast_llms = [
+                    llm_providers.make_langchain_llm(
+                        idx, model=GEMINI_BRAIN_MODEL, temperature=0.0,
+                        max_tokens=50, timeout=GEMINI_CLASSIFY_TIMEOUT,
+                    )
+                    for idx in range(llm_providers.key_count())
+                ]
+                logger.info(
+                    "[GEMINI] Realtime fast-extract ready: %d key(s)%s",
+                    len(self._gemini_fast_llms),
+                    " (RACE mode ON)" if llm_providers.race_enabled() else "",
+                )
+            except Exception as e:
+                logger.warning("[GEMINI] Realtime fast-extract init failed: %s", e)
+                self._gemini_fast_llms = []
 
     def _load_user_location(self) -> str:
         """Load user location from env var or auto-detect from learning_data files."""
@@ -129,12 +150,35 @@ class RealtimeGroqService(GroqService):
         logger.info("[REALTIME] Location-grounded query: '%s' -> '%s'", q[:80], grounded[:120])
         return grounded
 
+    def _safe_fallback_query(self, question: str) -> str:
+        """Sanitize a raw question before using it as a literal search query.
+
+        The realtime path falls back to the raw user question when LLM query
+        extraction fails. For a normal short question that's fine, but an
+        INTERNAL multi-line prompt (e.g. the daily startup brief, which embeds
+        the user's unread-email count and calendar status) must never reach the
+        web search provider verbatim. Keep only the first meaningful line and
+        cap the length so private context can't leak on extraction failure.
+        """
+        q = (question or "").strip()
+        if not q:
+            return q
+        lines = [ln.strip() for ln in q.splitlines() if ln.strip()]
+        first_line = lines[0] if lines else q
+        # Multi-line or very long -> almost certainly an internal instruction
+        # prompt; keep just the first line. Otherwise use the question as-is.
+        safe = first_line if (len(lines) > 1 or len(q) > 160) else q
+        if len(safe) > 160:
+            safe = safe[:160].rsplit(" ", 1)[0]
+        return safe
+
     def _extract_search_query(
         self, question: str, chat_history: Optional[List[tuple]] = None
     ) -> str:
-        
-        if not self._fast_llm:
-            return self._maybe_ground_location(question)
+
+        self.last_provider_event = None
+        if not self._fast_llm and not self._gemini_fast_llms:
+            return self._maybe_ground_location(self._safe_fallback_query(question))
 
         q = question.strip()
         q_lower = q.lower()
@@ -160,7 +204,7 @@ class RealtimeGroqService(GroqService):
             if chat_history:
                 recent = chat_history[-3:]
                 parts = []
-                
+
                 for h, a in recent:
                     parts.append(f"User: {h[:200]}")
                     parts.append(f"Assistant: {a[:200]}")
@@ -181,13 +225,11 @@ class RealtimeGroqService(GroqService):
                     f"Search query:"
                 )
 
-            monitor = get_api_key_monitor()
-            monitor.record_groq_attempt(0, operation="realtime_query_extract", source="realtime_service")
-            
-            response = self._fast_llm.invoke(full_prompt)
-            extracted = response.content.strip().strip('"').strip("'")
-            
-            monitor.record_groq_success(0, operation="realtime_query_extract", source="realtime_service", latency_ms=int((time.perf_counter() - t0) * 1000))
+            extracted = self._extract_llm_text(full_prompt)
+            if not extracted:
+                logger.warning("[REALTIME] Query extraction: all providers failed, using sanitized raw question")
+                return self._maybe_ground_location(self._safe_fallback_query(question))
+            extracted = extracted.strip().strip('"').strip("'")
 
             if extracted and 3 <= len(extracted) <= 200:
                 grounded = self._maybe_ground_location(extracted)
@@ -197,16 +239,131 @@ class RealtimeGroqService(GroqService):
                 )
                 return grounded
 
-            logger.warning("[REALTIME] Query extraction returned unusable result, using raw question")
-            return self._maybe_ground_location(question)
+            logger.warning("[REALTIME] Query extraction returned unusable result, using sanitized raw question")
+            return self._maybe_ground_location(self._safe_fallback_query(question))
 
         except Exception as e:
             get_api_key_monitor().record_groq_failure(
                 0, operation="realtime_query_extract", source="realtime_service", error=str(e),
                 is_rate_limit=("429" in str(e) or "rate limit" in str(e).lower())
             )
-            logger.warning("[REALTIME] Query extraction failed (%s), using raw question", e)
-            return self._maybe_ground_location(question)
+            logger.warning("[REALTIME] Query extraction failed (%s), using sanitized raw question", e)
+            return self._maybe_ground_location(self._safe_fallback_query(question))
+
+    def _extract_llm_text(self, prompt: str) -> Optional[str]:
+        """Query extraction via Groq (primary) with Gemini failover; race when enabled."""
+        if llm_providers.race_enabled() and self._fast_llm and self._gemini_fast_llms:
+            return self._race_extract(prompt)
+        if self._fast_llm:
+            text = self._groq_extract(prompt)
+            if text:
+                self._set_extract_provider("groq", 0, failover=False)
+                return text
+        if self._gemini_fast_llms:
+            return self._gemini_extract(prompt, failover=bool(self._fast_llm))
+        return None
+
+    def _groq_extract(self, prompt: str) -> Optional[str]:
+        monitor = get_api_key_monitor()
+        t0 = time.perf_counter()
+        monitor.record_groq_attempt(0, operation="realtime_query_extract", source="realtime_service")
+        try:
+            response = self._fast_llm.invoke(prompt)
+            text = (response.content or "").strip()
+            monitor.record_groq_success(0, operation="realtime_query_extract", source="realtime_service", latency_ms=int((time.perf_counter() - t0) * 1000))
+            return text or None
+        except Exception as e:
+            monitor.record_groq_failure(0, operation="realtime_query_extract", source="realtime_service", error=str(e), is_rate_limit=("429" in str(e) or "rate limit" in str(e).lower()), latency_ms=int((time.perf_counter() - t0) * 1000))
+            logger.warning("[REALTIME] Groq query extraction failed: %s", e)
+            return None
+
+    def _gemini_extract(self, prompt: str, failover: bool = True) -> Optional[str]:
+        monitor = get_api_key_monitor()
+        for idx in llm_providers.ordered_keys():
+            if idx >= len(self._gemini_fast_llms):
+                continue
+            t0 = time.perf_counter()
+            monitor.record_gemini_attempt(idx, operation="realtime_query_extract", source="realtime_service")
+            try:
+                response = self._gemini_fast_llms[idx].invoke(prompt)
+                text = (response.content or "").strip()
+                if text:
+                    monitor.record_gemini_success(idx, operation="realtime_query_extract", source="realtime_service", latency_ms=int((time.perf_counter() - t0) * 1000))
+                    self._set_extract_provider("gemini", idx, failover=failover)
+                    return text
+                monitor.record_gemini_failure(idx, operation="realtime_query_extract", source="realtime_service", error="empty", latency_ms=int((time.perf_counter() - t0) * 1000))
+            except Exception as e:
+                monitor.record_gemini_failure(idx, operation="realtime_query_extract", source="realtime_service", error=str(e), is_rate_limit=llm_providers.is_rate_limit_error(e), latency_ms=int((time.perf_counter() - t0) * 1000))
+                llm_providers.trip(idx)
+                logger.warning("[REALTIME] Gemini query extraction failed (key %d): %s", idx, e)
+        return None
+
+    def _race_extract(self, prompt: str) -> Optional[str]:
+        """Send to Groq + Gemini together; first non-empty result wins."""
+        import concurrent.futures
+        monitor = get_api_key_monitor()
+        gem_idx = llm_providers.next_key()
+
+        def run_groq():
+            return ("groq", 0, self._groq_extract(prompt))
+
+        def run_gemini():
+            t0 = time.perf_counter()
+            monitor.record_gemini_attempt(gem_idx, operation="realtime_query_extract", source="realtime_service")
+            try:
+                resp = self._gemini_fast_llms[gem_idx].invoke(prompt)
+                text = (resp.content or "").strip()
+                if text:
+                    monitor.record_gemini_success(gem_idx, operation="realtime_query_extract", source="realtime_service", latency_ms=int((time.perf_counter() - t0) * 1000))
+                    return ("gemini", gem_idx, text)
+                monitor.record_gemini_failure(gem_idx, operation="realtime_query_extract", source="realtime_service", error="empty", latency_ms=int((time.perf_counter() - t0) * 1000))
+                return ("gemini", gem_idx, None)
+            except Exception as e:
+                monitor.record_gemini_failure(gem_idx, operation="realtime_query_extract", source="realtime_service", error=str(e), is_rate_limit=llm_providers.is_rate_limit_error(e), latency_ms=int((time.perf_counter() - t0) * 1000))
+                llm_providers.trip(gem_idx)
+                return ("gemini", gem_idx, None)
+
+        winner = None
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+            futures = [ex.submit(run_groq), ex.submit(run_gemini)]
+            for fut in concurrent.futures.as_completed(futures):
+                provider, idx, text = fut.result()
+                if text:
+                    winner = (provider, idx, text)
+                    break
+        if winner:
+            provider, idx, text = winner
+            self._set_extract_provider(provider, idx, race=True)
+            return text
+        return None
+
+    def _set_extract_provider(self, provider: str, key_index: int, failover: bool = False, race: bool = False) -> None:
+        if provider == "gemini":
+            label = llm_providers.key_label(key_index)
+            pretty = "Gemini"
+        else:
+            label = "GROQ_API_KEY" if key_index == 0 else "GROQ_API_KEY_" + str(key_index + 1)
+            pretty = "Groq"
+        if race:
+            event = "provider_race"
+            message = "Search query race -> " + pretty + " won"
+        elif failover:
+            event = "provider_failover"
+            message = "Search query -> " + pretty + " (" + label + ") [failover]"
+        else:
+            event = "llm_provider"
+            message = "Search query -> " + pretty + " (" + label + ")"
+        self.last_provider_event = {
+            "event": event,
+            "provider": provider,
+            "key_index": key_index,
+            "key_label": label,
+            "operation": "realtime_query_extract",
+            "failover": failover,
+            "race": race,
+            "route": "realtime",
+            "message": message,
+        }
 
     def search_serper(self, query: str, num_results: int = 5) -> Tuple[str, Optional[dict]]:
         """Search Google via Serper API with key fallback. Returns (formatted_text, raw_payload)."""
@@ -214,7 +371,7 @@ class RealtimeGroqService(GroqService):
         if not self.serper_api_keys:
             logger.warning("Serper API key not configured. SERPER_API_KEY not set.")
             return ("", None)
-        
+
         if not query or not str(query).strip():
             return ("", None)
 
@@ -360,16 +517,18 @@ class RealtimeGroqService(GroqService):
         return ("", None)
 
     def get_response(self, question: str, chat_history: Optional[List[tuple]] = None, key_start_index: int = 0) -> str:
-        
+
         try:
             search_query = self._extract_search_query(question, chat_history)
-            logger.info("[REALTIME] Searching Serper for: %s", search_query)
+            if getattr(self, "last_provider_event", None):
+                yield {"_activity": self.last_provider_event}
+            logger.info("[REALTIME] Searching Serper for: %s", " ".join(str(search_query).split())[:80])
             formatted_results, _ = self.search_serper(search_query, num_results=5)
-            
+
             if formatted_results:
                 logger.info("[REALTIME] Serper returned results (length: %d chars)", len(formatted_results))
             else:
-                logger.warning("[REALTIME] Serper returned no results for: %s", search_query)
+                logger.warning("[REALTIME] Serper returned no results for: %s", " ".join(str(search_query).split())[:80])
 
             extra_parts = [escape_curly_braces(formatted_results)] if formatted_results else [_NO_RESULTS_WARNING]
             prompt, messages = self._build_prompt_and_messages(
@@ -397,7 +556,7 @@ class RealtimeGroqService(GroqService):
     def prefetch_web_search(
         self, question: str, chat_history: Optional[List[tuple]] = None
     ) -> Tuple[str, Optional[dict]]:
-        
+
         try:
             t0 = time.perf_counter()
             search_query = self._extract_search_query(question, chat_history)
@@ -408,27 +567,29 @@ class RealtimeGroqService(GroqService):
                 logger.info("[REALTIME] Pre-fetch: Serper returned %d chars in %.3fs total",
                             len(formatted_results), time.perf_counter() - t0)
             return (formatted_results or "", payload)
-        
+
         except Exception as e:
             logger.warning("[REALTIME] Pre-fetch failed: %s", e)
             return ("", None)
 
     def stream_response(self, question: str, chat_history: Optional[List[tuple]] = None, key_start_index: int = 0) -> Iterator[Any]:
-        
+
         try:
             yield {"_activity": {"event": "extracting_query", "message": "Extracting search query..."}}
             search_query = self._extract_search_query(question, chat_history)
-            logger.info("[REALTIME] Searching Serper for: %s", search_query)
+            if getattr(self, "last_provider_event", None):
+                yield {"_activity": self.last_provider_event}
+            logger.info("[REALTIME] Searching Serper for: %s", " ".join(str(search_query).split())[:80])
             yield {"_activity": {"event": "searching_web", "query": search_query, "message": f"Searching Google for: {search_query}"}}
 
             formatted_results, payload = self.search_serper(search_query, num_results=5)
             num_results = len(payload.get("results", [])) if payload else 0
-            
+
             if formatted_results:
                 logger.info("[REALTIME] Serper returned results (length: %d chars)", len(formatted_results))
                 yield {"_activity": {"event": "search_completed", "message": f"Search completed: {num_results} results, {len(formatted_results)} chars of context"}}
             else:
-                logger.warning("[REALTIME] Serper returned no results for: %s", search_query)
+                logger.warning("[REALTIME] Serper returned no results for: %s", " ".join(str(search_query).split())[:80])
                 yield {"_activity": {"event": "search_completed", "message": "No search results found"}}
 
             if payload:
@@ -441,7 +602,7 @@ class RealtimeGroqService(GroqService):
                 mode_addendum=REALTIME_CHAT_ADDENDUM,
             )
             yield from self._stream_llm(prompt, messages, question, key_start_index=key_start_index)
-            logger.info("[REALTIME] Stream completed for: %s", search_query)
+            logger.info("[REALTIME] Stream completed for: %s", " ".join(str(search_query).split())[:80])
 
         except AllGroqApisFailedError:
             raise
@@ -458,7 +619,7 @@ class RealtimeGroqService(GroqService):
         payload: Optional[dict] = None,
         key_start_index: int = 0,
     ) -> Iterator[Any]:
-        
+
         try:
             extra_parts = [escape_curly_braces(formatted_results)] if formatted_results else [_NO_RESULTS_WARNING]
             prompt, messages = self._build_prompt_and_messages(
@@ -471,7 +632,7 @@ class RealtimeGroqService(GroqService):
 
         except AllGroqApisFailedError:
             raise
-        
+
         except Exception as e:
             logger.error("Error in realtime stream_response_with_prefetched: %s", e, exc_info=True)
             raise

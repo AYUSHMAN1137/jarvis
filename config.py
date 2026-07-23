@@ -51,7 +51,7 @@ def _load_groq_api_keys() -> list:
 
 GROQ_API_KEYS = _load_groq_api_keys()
 GROQ_API_KEY = GROQ_API_KEYS[0] if GROQ_API_KEYS else ""
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 def _load_serper_api_keys() -> list:
     keys = []
     first = os.getenv("SERPER_API_KEY", "").strip()
@@ -68,11 +68,146 @@ def _load_serper_api_keys() -> list:
 
 SERPER_API_KEYS = _load_serper_api_keys()
 SERPER_API_KEY = SERPER_API_KEYS[0] if SERPER_API_KEYS else ""
-GROQ_BRAIN_MODEL = os.getenv("GROQ_BRAIN_MODEL", "llama-3.1-8b-instant")
-INTENT_CLASSIFY_MODEL = os.getenv("INTENT_CLASSIFY_MODEL", "llama-3.1-8b-instant")
+GROQ_BRAIN_MODEL = os.getenv("GROQ_BRAIN_MODEL", "openai/gpt-oss-20b")
+INTENT_CLASSIFY_MODEL = os.getenv("INTENT_CLASSIFY_MODEL", "openai/gpt-oss-20b")
+# The brain classifier must fail fast and fall back to rule-based routing.
+# Keep this small so a slow / rate-limited API call can't hang the whole reply.
+BRAIN_CLASSIFY_TIMEOUT = int(os.getenv("BRAIN_CLASSIFY_TIMEOUT", "4"))
 TASK_EXECUTION_TIMEOUT = int(os.getenv("TASK_EXECUTION_TIMEOUT", "30"))
+
+# === Agentic tool-calling (desktop + web automation) ===
+# A capable model is used so tool selection is reliable. Tool-calling needs a
+# model that supports the OpenAI-style `tools` parameter well.
+# To switch to a local LLM later (e.g. Ollama/llama.cpp on your RTX 3050),
+# point AGENT_BASE_URL at the local OpenAI-compatible endpoint and set
+# AGENT_MODEL to the local model name. The agent loop works unchanged.
+AGENT_MODEL = os.getenv("AGENT_MODEL", "openai/gpt-oss-120b")
+AGENT_BASE_URL = os.getenv("AGENT_BASE_URL", "").strip()
+AGENT_MAX_STEPS = int(os.getenv("AGENT_MAX_STEPS", "16"))
+AGENT_STEP_TIMEOUT = int(os.getenv("AGENT_STEP_TIMEOUT", "30"))
+# Per-request timeout for a single agent LLM call. Keeps a hung/slow key from
+# blocking the whole agent run (a slow key now fails fast and we move on).
+AGENT_REQUEST_TIMEOUT = int(os.getenv("AGENT_REQUEST_TIMEOUT", "18"))
+PYAUTOGUI_FAILSAFE = os.getenv("PYAUTOGUI_FAILSAFE", "true").strip().lower() != "false"
 GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+
+# === Gemini (secondary provider for reliability + speed) ===
+# Gemini is reached through its OpenAI-compatible endpoint, so the exact same
+# OpenAI-style code paths (chat, streaming, native tool-calling) work unchanged
+# — we just point a client at a different base URL. Multiple keys are supported
+# for rotation, exactly like Groq: GEMINI_API_KEY, GEMINI_API_KEY_2, ...
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name, "").strip().lower()
+    if not raw:
+        return default
+    return raw in ("1", "true", "yes", "on")
+
+def _load_gemini_api_keys() -> list:
+    keys = []
+    first = os.getenv("GEMINI_API_KEY", "").strip()
+    if first:
+        keys.append(first)
+    i = 2
+    while True:
+        k = os.getenv(f"GEMINI_API_KEY_{i}", "").strip()
+        if not k:
+            break
+        keys.append(k)
+        i += 1
+    return keys
+
+GEMINI_API_KEYS = _load_gemini_api_keys()
+GEMINI_API_KEY = GEMINI_API_KEYS[0] if GEMINI_API_KEYS else ""
+GEMINI_OPENAI_BASE_URL = os.getenv(
+    "GEMINI_OPENAI_BASE_URL",
+    "https://generativelanguage.googleapis.com/v1beta/openai/",
+).strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_BRAIN_MODEL = os.getenv("GEMINI_BRAIN_MODEL", "gemini-2.0-flash")
+GEMINI_REQUEST_TIMEOUT = int(os.getenv("GEMINI_REQUEST_TIMEOUT", "30"))
+GEMINI_CLASSIFY_TIMEOUT = int(os.getenv("GEMINI_CLASSIFY_TIMEOUT", str(BRAIN_CLASSIFY_TIMEOUT)))
+
+# Gemini is used as a FAILOVER for Groq everywhere (chat, realtime, agent,
+# brain, content). Defaults ON when at least one Gemini key is configured,
+# OFF otherwise. Set ENABLE_GEMINI_FALLBACK=false to force-disable.
+ENABLE_GEMINI_FALLBACK = _env_bool("ENABLE_GEMINI_FALLBACK", bool(GEMINI_API_KEYS))
+
+# Race mode: for small, side-effect-free calls (brain classification and
+# realtime query extraction) fire Groq and Gemini together and take whichever
+# answers first. NEVER used for the agent/tool-calling loop (side effects) or
+# for long chat answers (wasted tokens). Requires Gemini to be enabled.
+ENABLE_RACE_MODE = _env_bool("ENABLE_RACE_MODE", False) and ENABLE_GEMINI_FALLBACK
+
+# Circuit breaker: when a provider key hits a hard error / rate-limit, put it in
+# a short cooldown so we skip it instead of hammering it again right away.
+PROVIDER_COOLDOWN_SECONDS = int(os.getenv("PROVIDER_COOLDOWN_SECONDS", "30"))
+
+# === Z.ai (GLM) — PRIMARY agent model ===
+# GLM-4.7-Flash on Z.ai is the primary brain for the agentic tool-calling loop;
+# gpt-oss (Groq) and Gemini sit behind it as failovers. Z.ai exposes an
+# OpenAI-compatible endpoint, so the same raw OpenAI-SDK tool-calling path used
+# for Groq/Gemini works unchanged — we just point a client at Z.ai's base URL
+# and use the GLM model. Multiple keys are supported for rotation, exactly like
+# Groq/Gemini: ZAI_API_KEY, ZAI_API_KEY_2, ...
+def _load_zai_api_keys() -> list:
+    keys = []
+    first = os.getenv("ZAI_API_KEY", "").strip()
+    if first:
+        keys.append(first)
+    i = 2
+    while True:
+        k = os.getenv(f"ZAI_API_KEY_{i}", "").strip()
+        if not k:
+            break
+        keys.append(k)
+        i += 1
+    return keys
+
+ZAI_API_KEYS = _load_zai_api_keys()
+ZAI_API_KEY = ZAI_API_KEYS[0] if ZAI_API_KEYS else ""
+ZAI_OPENAI_BASE_URL = os.getenv(
+    "ZAI_OPENAI_BASE_URL",
+    "https://api.z.ai/api/paas/v4/",
+).strip()
+ZAI_MODEL = os.getenv("ZAI_MODEL", "glm-4.7-flash")
+# Per-request timeout for a single GLM call (defaults to the agent timeout).
+ZAI_REQUEST_TIMEOUT = int(os.getenv("ZAI_REQUEST_TIMEOUT", str(AGENT_REQUEST_TIMEOUT)))
+# GLM is the PRIMARY agent model when at least one Z.ai key is configured.
+# Set ENABLE_ZAI_AGENT=false to force-disable and make Groq the primary again.
+ENABLE_ZAI_AGENT = _env_bool("ENABLE_ZAI_AGENT", bool(ZAI_API_KEYS))
 VISION_MAX_IMAGE_BYTES = int(os.getenv("VISION_MAX_IMAGE_BYTES", "5000000"))
+
+# === Phase 5 -- Multi-step Planner + UIA automation ===
+# Phase 5 adds two new pieces on top of Phase 4 (Checker/Learner stay as-is):
+#   * a Planner that turns ONE command into an ordered list of verifiable steps,
+#   * a UIA engine (pywinauto, Windows UI Automation) that finds and drives real
+#     UI controls by NAME/TYPE (generic -- no per-app hardcode).
+# Everything is fully fail-soft: if PHASE5_ENABLED=False, or pywinauto is not
+# installed, or the planner can't decompose a command, JARVIS behaves exactly
+# like Phase 4 (the agent's ReAct loop is the single-action fallback).
+PHASE5_ENABLED = _env_bool("PHASE5_ENABLED", True)
+
+# Planner: linear plan with precondition skip-checks + adaptive re-plan on FAIL.
+# (Deliberately NOT a heavy rule/branch engine -- locked design decision.)
+PLANNER_ENABLED = _env_bool("PLANNER_ENABLED", True)
+# Hard cap on steps in a single plan so a bad decomposition can't run forever.
+PLANNER_MAX_STEPS = int(os.getenv("PLANNER_MAX_STEPS", "8"))
+# Per-step settle wait (seconds) before verifying, so the UI can catch up.
+PLANNER_STEP_SETTLE_SECONDS = float(os.getenv("PLANNER_STEP_SETTLE_SECONDS", "1.0"))
+# Smart confirmation gate: pause before a risky/irreversible step and ask once.
+PHASE5_CONFIRM_RISKY = _env_bool("PHASE5_CONFIRM_RISKY", True)
+
+# UIA engine (pywinauto, UI Automation backend). Lazy-imported; if the package
+# is missing the engine reports unavailable and every UIA tool fails-soft with a
+# clear, honest message (never a crash, never a fake success).
+UIA_ENABLED = _env_bool("UIA_ENABLED", True)
+# Which library backs the engine. "pywinauto" is the locked choice (UIA backend).
+UIA_LIBRARY = os.getenv("UIA_LIBRARY", "pywinauto").strip().lower()
+# How long (seconds) to search the UI tree for a control before giving up.
+UIA_FIND_TIMEOUT = float(os.getenv("UIA_FIND_TIMEOUT", "5.0"))
+# UIA-first, vision-fallback: when a UI step can't be verified, fall back to the
+# Phase 4 vision verifier (re-uses CHECKER_VISION_ENABLED + the Gemini verifier).
+PHASE5_VISION_FALLBACK = _env_bool("PHASE5_VISION_FALLBACK", True)
 TTS_VOICE = os.getenv("TTS_VOICE", "en-GB-RyanNeural")
 TTS_RATE = os.getenv("TTS_RATE", "+22%")
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -142,6 +277,74 @@ CRITICAL: Use search results as your PRIMARY source. Extract specific facts, nam
 
 LENGTH: 1-2 sentences for simple questions. Only longer when asked.
 """
+
+# === Persistent Memory (Master Plan Phase 2: session + permanent SQLite) ===
+# Local, fail-soft long-term memory store. See app/services/memory_service.py.
+MEMORY_DIR = BASE_DIR / "database" / "memory"
+MEMORY_DB_PATH = BASE_DIR / "database" / "memory.db"
+USER_PROFILE_PATH = MEMORY_DIR / "user_profile.md"
+JARVIS_PERSONA_PATH = MEMORY_DIR / "jarvis_persona.md"
+MEMORY_ENABLED = _env_bool("MEMORY_ENABLED", True)
+MEMORY_CONTEXT_MAX_CHARS = int(os.getenv("MEMORY_CONTEXT_MAX_CHARS", "1800"))
+MEMORY_MAX_FACTS_INJECT = int(os.getenv("MEMORY_MAX_FACTS_INJECT", "12"))
+MEMORY_MAX_ACTIONS = int(os.getenv("MEMORY_MAX_ACTIONS", "60"))
+MEMORY_REDACT_SECRETS = _env_bool("MEMORY_REDACT_SECRETS", True)
+MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+
+# === Phase 4: Checker + Vision + Self-Learning (Master Plan Phase 4) ===
+# All background + fail-soft. PHASE4_ENABLED=False => behaves exactly like Phase 3.
+PHASE4_ENABLED = _env_bool("PHASE4_ENABLED", True)
+# Verified skills + success observations persist here (the event bus is transient).
+SKILLS_DB_PATH = BASE_DIR / "database" / "skills.db"
+# "N baar repeat" fluke-guard: a verified success must repeat at least this many
+# times before it crystallizes into a reusable skill.
+SKILL_MIN_REPEATS = int(os.getenv("SKILL_MIN_REPEATS", "3"))
+# Checker may use Gemini vision as a fallback when the watcher can't decide.
+CHECKER_VISION_ENABLED = _env_bool("CHECKER_VISION_ENABLED", True)
+# Seconds to wait before re-reading watcher state (a freshly opened/closed window
+# needs a moment to appear/disappear; the watcher polls ~2s).
+CHECKER_SETTLE_SECONDS = float(os.getenv("CHECKER_SETTLE_SECONDS", "1.5"))
+# Learner: max silent auto-retries for SAFE, idempotent actions before it stops
+# and reports honestly (never an infinite loop, never a fake "done").
+LEARNER_MAX_RETRIES = int(os.getenv("LEARNER_MAX_RETRIES", "2"))
+# Learner: allow advisory web how-to lookup when stuck (off by default).
+LEARNER_RESEARCH_ENABLED = _env_bool("LEARNER_RESEARCH_ENABLED", False)
+# Vision model for screen verification (Gemini multimodal, OpenAI-compatible).
+GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", GEMINI_MODEL)
+
+
+# === Phase 6: Fast local cache (verified-only) ===
+# A miss/disabled cache always falls back to the normal path -- reliability #1,
+# speed #2. Nothing is hardcoded; every entry is learned from a verified run.
+PHASE6_ENABLED = _env_bool("PHASE6_ENABLED", True)
+# Resolved verified command -> action mapping (L1 exact + L4 static response).
+COMMAND_CACHE_DB_PATH = BASE_DIR / "database" / "command_cache.db"
+# Soft cap on active cache entries; least-recently-used rows are evicted.
+CACHE_MAX_ENTRIES = int(os.getenv("CACHE_MAX_ENTRIES", "500"))
+# L2 semantic cache reuses the existing FAISS vector store (no new heavy dep).
+CACHE_SEMANTIC_ENABLED = _env_bool("CACHE_SEMANTIC_ENABLED", True)
+# Cosine-similarity floor for a semantic cache hit (high => only near-identical).
+CACHE_SEMANTIC_THRESHOLD = float(os.getenv("CACHE_SEMANTIC_THRESHOLD", "0.93"))
+
+# === Phase 7: Proactive engine (suggest-only by default) ===
+# Watcher emits change events; the engine may *suggest* actions. It NEVER acts
+# silently unless the user explicitly opts a habit into auto-run (consent).
+PHASE7_ENABLED = _env_bool("PHASE7_ENABLED", True)
+# Master switch: when False, suggestions are computed but never auto-executed.
+PROACTIVE_AUTO_ACT = _env_bool("PROACTIVE_AUTO_ACT", False)
+# Min seconds between two suggestions so JARVIS never nags.
+PROACTIVE_MIN_INTERVAL_SECONDS = int(os.getenv("PROACTIVE_MIN_INTERVAL_SECONDS", "45"))
+# Consent + suggestion audit log lives here.
+PROACTIVE_DB_PATH = BASE_DIR / "database" / "proactive.db"
+
+# === Phase 8: Personalization (habits + facts, always visible + forgettable) ===
+# Learns habits/aliases/facts to personalize replies, cache priority and
+# proactive suggestions. Everything is visible to the user and can be forgotten.
+PHASE8_ENABLED = _env_bool("PHASE8_ENABLED", True)
+USER_MODEL_DB_PATH = BASE_DIR / "database" / "user_model.db"
+# A habit must be observed at least this many times before it is trusted.
+HABIT_MIN_OBSERVATIONS = int(os.getenv("HABIT_MIN_OBSERVATIONS", "3"))
+
 
 def load_user_context() -> str:
     context_parts = []

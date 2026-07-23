@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>J.A.R.V.I.S · Control Center</title>
+<style>
+  :root{
+    --bg:#070b12; --bg2:#0b1019; --card:#121a2b; --card2:#0f1626;
+    --line:#1e2a40; --txt:#e8eef6; --mut:#8190a8; --accent:#3da9fc;
+    --ok:#3ad17f; --okbg:rgba(58,209,127,.13); --bad:#ff6b6f; --badbg:rgba(255,107,111,.13);
+    --warn:#f5b942; --warnbg:rgba(245,185,66,.13); --purple:#7b61ff;
+    --shadow:0 6px 24px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:
+    radial-gradient(1200px 600px at 80% -10%,rgba(61,169,252,.10),transparent 60%),
+    radial-gradient(900px 500px at -10% 110%,rgba(123,97,255,.08),transparent 55%),var(--bg);
+    color:var(--txt);-webkit-font-smoothing:antialiased;min-height:100%;}
+  a{color:var(--accent);text-decoration:none;}
+
+  header{display:flex;align-items:center;justify-content:space-between;gap:16px;
+    padding:14px 26px;border-bottom:1px solid var(--line);position:sticky;top:0;
+    background:rgba(7,11,18,.85);backdrop-filter:blur(10px);z-index:20;flex-wrap:wrap;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .logo{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;
+    background:linear-gradient(135deg,#3da9fc,#7b61ff);box-shadow:0 4px 14px rgba(61,169,252,.4);
+    font-weight:800;font-size:15px;color:#fff;}
+  h1{font-size:16px;margin:0;letter-spacing:1.5px;font-weight:700;}
+  h1 small{display:block;font-size:10.5px;letter-spacing:.5px;color:var(--mut);font-weight:500;margin-top:2px;}
+  nav{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  nav a{padding:7px 13px;border-radius:8px;border:1px solid var(--line);font-size:12.5px;
+    color:var(--mut);background:var(--card2);transition:.15s;}
+  nav a:hover{color:var(--txt);border-color:var(--accent);}
+  nav a.active{color:#fff;background:linear-gradient(135deg,rgba(61,169,252,.25),rgba(123,97,255,.25));border-color:var(--accent);}
+  .conn{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--mut);}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--bad);box-shadow:0 0 0 4px var(--badbg);}
+  .dot.on{background:var(--ok);box-shadow:0 0 0 4px var(--okbg);}
+
+  main{padding:22px 26px 60px;max-width:1380px;margin:0 auto;}
+  .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
+  .card{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);
+    border-radius:14px;padding:16px 18px;box-shadow:var(--shadow);min-width:0;}
+  .card h2{margin:0 0 12px;font-size:12px;letter-spacing:1.2px;text-transform:uppercase;
+    color:var(--mut);font-weight:700;display:flex;align-items:center;gap:8px;justify-content:space-between;}
+  .card h2 .ic{font-size:15px;}
+  .span3{grid-column:span 3;} .span4{grid-column:span 4;} .span5{grid-column:span 5;}
+  .span6{grid-column:span 6;} .span7{grid-column:span 7;} .span8{grid-column:span 8;} .span12{grid-column:span 12;}
+  @media(max-width:1080px){.span3,.span4,.span5{grid-column:span 6;}.span7,.span8{grid-column:span 12;}}
+  @media(max-width:680px){.grid > *{grid-column:span 12 !important;}}
+
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;
+    font-size:11.5px;font-weight:600;border:1px solid var(--line);}
+  .pill.ok{color:var(--ok);background:var(--okbg);border-color:rgba(58,209,127,.3);}
+  .pill.bad{color:var(--bad);background:var(--badbg);border-color:rgba(255,107,111,.3);}
+  .pill.warn{color:var(--warn);background:var(--warnbg);border-color:rgba(245,185,66,.3);}
+  .pill.mut{color:var(--mut);}
+
+  .health{display:flex;flex-wrap:wrap;gap:9px;}
+  .stat{display:flex;flex-direction:column;gap:3px;}
+  .stat .v{font-size:22px;font-weight:800;letter-spacing:.5px;}
+  .stat .k{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.6px;}
+  .stats-row{display:flex;gap:26px;flex-wrap:wrap;}
+
+  .kv{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed rgba(30,42,64,.7);font-size:13px;}
+  .kv:last-child{border-bottom:0;} .kv .k{color:var(--mut);} .kv .v{font-weight:600;text-align:right;word-break:break-word;}
+  .list{display:flex;flex-direction:column;gap:7px;max-height:320px;overflow:auto;}
+  .row{display:flex;align-items:flex-start;gap:9px;padding:8px 10px;border:1px solid var(--line);
+    border-radius:9px;background:rgba(15,22,38,.6);font-size:12.6px;}
+  .row .meta{color:var(--mut);font-size:11px;margin-top:2px;}
+  .tag{font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;letter-spacing:.4px;white-space:nowrap;}
+  .tag.PASS{color:var(--ok);background:var(--okbg);} .tag.FAIL{color:var(--bad);background:var(--badbg);}
+  .tag.UNKNOWN{color:var(--warn);background:var(--warnbg);}
+  .tag.learner{color:var(--purple);background:rgba(123,97,255,.14);}
+  .empty{color:var(--mut);font-size:12.5px;font-style:italic;padding:8px 2px;}
+  .bar{height:7px;border-radius:5px;background:var(--card2);overflow:hidden;border:1px solid var(--line);}
+  .bar > i{display:block;height:100%;background:linear-gradient(90deg,#3da9fc,#7b61ff);}
+  .mini{font-size:11px;color:var(--mut);}
+  footer{color:var(--mut);font-size:11.5px;text-align:center;margin-top:26px;}
+  code{background:var(--card2);padding:1px 6px;border-radius:5px;border:1px solid var(--line);font-size:12px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo">JV</div>
+    <h1>J.A.R.V.I.S<small>CONTROL CENTER</small></h1>
+  </div>
+  <nav>
+    <a href="/jarvis/" target="_blank" rel="noopener">🎙️ JARVIS</a>
+    <a href="/watcher" target="_blank" rel="noopener">👁️ Watcher</a>
+    <a href="/dashboard" class="active">📊 Dashboard</a>
+  </nav>
+  <div class="conn"><span id="dot" class="dot"></span><span id="connTxt">connecting…</span></div>
+</header>
+
+<main>
+  <div class="grid">
+    <!-- System health -->
+    <section class="card span12">
+      <h2><span><span class="ic">🟢</span> System Health</span><span id="uptime" class="mini"></span></h2>
+      <div class="health" id="health"></div>
+    </section>
+
+    <!-- Watcher -->
+    <section class="card span4">
+      <h2><span><span class="ic">👁️</span> Watcher (Phase 1)</span><span id="watcherBadge"></span></h2>
+      <div id="watcherKV"></div>
+      <div style="margin-top:10px" class="mini">Open apps JARVIS launched</div>
+      <div class="list" id="launched" style="margin-top:6px;max-height:170px"></div>
+    </section>
+
+    <!-- Checker feed -->
+    <section class="card span5">
+      <h2><span><span class="ic">✅</span> Checker — Verifications (Phase 4)</span><span id="verCount" class="pill mut">0</span></h2>
+      <div class="list" id="verifs"></div>
+    </section>
+
+    <!-- Learner -->
+    <section class="card span3">
+      <h2><span><span class="ic">🧠</span> Learner (Phase 4)</span></h2>
+      <div id="learnerKV"></div>
+      <div style="margin-top:10px" class="mini">Recent notes</div>
+      <div class="list" id="learnerNotes" style="margin-top:6px;max-height:170px"></div>
+    </section>
+
+    <!-- Skills -->
+    <section class="card span5">
+      <h2><span><span class="ic">📚</span> Skills (verified, self-learned)</span><span id="skillCount" class="pill mut">0</span></h2>
+      <div class="list" id="skills"></div>
+    </section>
+
+    <!-- Event bus -->
+    <section class="card span3">
+      <h2><span><span class="ic">🔌</span> Event Bus</span></h2>
+      <div id="busKV"></div>
+    </section>
+
+    <!-- Providers -->
+    <section class="card span4">
+      <h2><span><span class="ic">🔑</span> Providers / API Keys</span></h2>
+      <div id="providers"></div>
+    </section>
+
+    <!-- Phase 5: Planner / Multi-step / UIA -->
+    <section class="card span12">
+      <h2><span><span class="ic">🧩</span> Planner — Multi-step &amp; UIA (Phase 5)</span><span id="p5Badges"></span></h2>
+      <div id="p5KV"></div>
+      <div style="margin-top:10px" class="mini">Last plan</div>
+      <div id="p5Goal" class="mini" style="margin:4px 0 6px"></div>
+      <div class="list" id="p5Steps" style="max-height:220px"></div>
+    </section>
+
+    <!-- Phase 6: Verified-command cache -->
+    <section class="card span4">
+      <h2><span><span class="ic">⚡</span> Command Cache (Phase 6)</span><span id="p6Badge" class="pill mut">—</span></h2>
+      <div id="p6KV"></div>
+      <div class="bar" style="margin:6px 0 2px"><i id="p6Bar" style="width:0%"></i></div>
+      <div class="mini" id="p6Rate" style="margin-bottom:6px"></div>
+      <div class="mini" style="opacity:.7;margin-bottom:2px">Cached commands (<span id="p6Entries">0</span>)</div>
+      <div class="list" id="p6Recent" style="max-height:180px"></div>
+    </section>
+
+    <!-- Phase 7: Proactive engine -->
+    <section class="card span4">
+      <h2><span><span class="ic">💡</span> Proactive (Phase 7)</span><span id="p7Badge" class="pill mut">—</span></h2>
+      <div id="p7KV"></div>
+      <div class="mini" style="opacity:.7;margin:6px 0 2px">Pending suggestions</div>
+      <div class="list" id="p7Pending" style="max-height:150px"></div>
+      <div class="mini" style="opacity:.7;margin:6px 0 2px">Recent</div>
+      <div class="list" id="p7Recent" style="max-height:150px"></div>
+    </section>
+
+    <!-- Phase 8: User model / personalization -->
+    <section class="card span4">
+      <h2><span><span class="ic">🧠</span> Knows About You (Phase 8)</span><span id="p8Badge" class="pill mut">—</span></h2>
+      <div id="p8KV"></div>
+      <div class="mini" style="opacity:.7;margin:6px 0 2px">Facts</div>
+      <div class="list" id="p8Facts" style="max-height:150px"></div>
+      <div class="mini" style="opacity:.7;margin:6px 0 2px">Habits</div>
+      <div class="list" id="p8Habits" style="max-height:150px"></div>
+    </section>
+
+    <!-- Command Tester: bulk live testing tool -->
+    <section class="card span12">
+      <h2><span><span class="ic">🧪</span> Command Tester — Bulk Live Testing</span><span id="ctBadge" class="pill mut">idle</span></h2>
+      <div class="mini">Paste commands, one per line. They run <b>one-by-one, live, with real actions</b>. Every verdict is verified honestly — watcher / tool-result / soft AI-judge — and never trusts the assistant's narration.</div>
+      <textarea id="ctInput" spellcheck="false" placeholder="open YouTube&#10;what is the weather in Dehradun&#10;set volume to 40&#10;shutdown the pc"
+        style="width:100%;box-sizing:border-box;min-height:104px;margin-top:10px;resize:vertical;background:#0c1020;color:#e8ecf6;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:10px 12px;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;"></textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
+        <button id="ctRun" style="cursor:pointer;border:0;border-radius:9px;padding:8px 16px;font-weight:600;color:#04140c;background:var(--ok);">▶ Run all</button>
+        <button id="ctStop" disabled style="cursor:pointer;border:1px solid rgba(255,255,255,.14);border-radius:9px;padding:8px 14px;color:var(--mut);background:transparent;">■ Stop</button>
+        <label class="mini" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="ctJudge" checked> soft AI-judge for chat replies</label>
+        <span id="ctProgress" class="mini"></span>
+        <span style="flex:1"></span>
+        <a id="ctDownload" class="pill mut" style="display:none;text-decoration:none;cursor:pointer" href="#">⬇ Download logs</a>
+      </div>
+      <div id="ctSummary" style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center"></div>
+      <div class="list" id="ctResults" style="margin-top:10px;max-height:380px"></div>
+    </section>
+  </div>
+  <footer>JARVIS Control Center · auto-refresh every 2s · <span id="stamp"></span></footer>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const INTERVAL = 2000;
+
+function pill(on, onTxt, offTxt){
+  return on ? `<span class="pill ok">● ${esc(onTxt||"on")}</span>`
+            : `<span class="pill bad">● ${esc(offTxt||"off")}</span>`;
+}
+function fmtUptime(s){
+  s = Math.max(0, parseInt(s||0,10));
+  const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=s%60;
+  return (h?h+"h ":"")+(m?m+"m ":"")+sec+"s";
+}
+function ago(ts){
+  if(!ts) return "";
+  let s = Math.max(0, Math.floor(Date.now()/1000 - ts));
+  if(s<60) return s+"s ago";
+  const m=Math.floor(s/60); if(m<60) return m+"m ago";
+  return Math.floor(m/60)+"h ago";
+}
+
+function setConn(ok){
+  $("dot").className = "dot"+(ok?" on":"");
+  $("connTxt").textContent = ok ? "live" : "offline";
+}
+
+function renderHealth(d){
+  const p4 = d.phase4 || {}; const h = p4.health || {};
+  const sys = d.system || {};
+  const items = [
+    ["Server", true, "online", "down"],
+    ["Watcher", !!(d.watcher && d.watcher.running), "running", "stopped"],
+    ["Phase 4", !!h.started, h.enabled? "online":"disabled", h.enabled? "starting":"disabled"],
+    ["Checker", !!h.checker, "ready", "off"],
+    ["Learner", !!h.learner, "ready", "off"],
+    ["Vision", !!h.vision, "ready", "fallback off"],
+    ["Skills DB", !!h.skills, "ready", "off"],
+    ["Memory", !!sys.memory, "ready", "off"],
+    ["Phase 5", !!(d.phase5 && d.phase5.health && d.phase5.health.started), "online", "disabled"],
+    ["UIA", !!(d.phase5 && d.phase5.health && d.phase5.health.uia), "ready", "no pywinauto"],
+  ];
+  $("health").innerHTML = items.map(([k,on,a,b])=>
+    `<span class="pill ${on?'ok':'bad'}">${esc(k)}: ${esc(on?a:b)}</span>`).join("");
+  $("uptime").textContent = h.uptime_seconds!=null ? ("Phase4 uptime "+fmtUptime(h.uptime_seconds)) : "";
+}
+
+function renderWatcher(d){
+  const w = d.watcher || {};
+  $("watcherBadge").innerHTML = pill(!!w.running,"running","stopped");
+  const s = w.settings || {};
+  const kv = [
+    ["Active window", w.active_window || "—"],
+    ["Processes", w.process_count!=null? w.process_count : "—"],
+    ["Open windows", (w.windows||[]).length],
+    ["Wi-Fi", s.wifi!=null? (esc(s.wifi)+(s.wifi_ssid?` (${esc(s.wifi_ssid)})`:"")) : "—"],
+    ["Bluetooth", s.bluetooth!=null? esc(s.bluetooth):"—"],
+    ["Volume", s.volume!=null? (s.volume+(s.muted?" (muted)":"")) : "—"],
+    ["Brightness", s.brightness!=null? s.brightness : "—"],
+  ];
+  $("watcherKV").innerHTML = kv.map(([k,v])=>`<div class="kv"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`).join("");
+  const la = w.launched || [];
+  $("launched").innerHTML = la.length ? la.map(a=>
+    `<div class="row"><div><b>${esc(a.name||"?")}</b><div class="meta">pid ${esc((a.pids||[]).join(","))} · ${esc(ago(a.opened_at))}</div></div></div>`).join("")
+    : `<div class="empty">none yet — ask JARVIS to open an app</div>`;
+}
+
+function renderActivity(d){
+  const acts = (d.phase4 && d.phase4.recent) || [];
+  const verifs = acts.filter(a=>a.kind==="verified");
+  $("verCount").textContent = verifs.length;
+  $("verifs").innerHTML = acts.length ? acts.map(a=>{
+    const tag = a.kind==="learner" ? "learner" : (a.verdict||"UNKNOWN");
+    const cls = a.kind==="learner" ? "learner" : (a.verdict||"UNKNOWN");
+    const ev = a.evidence ? ` · ${esc(a.evidence)}` : "";
+    return `<div class="row"><span class="tag ${cls}">${esc(tag)}</span>
+      <div><b>${esc(a.tool||"—")}</b><div class="meta">${esc(a.reason||"")}${ev} · via ${esc(a.source||"?")} · ${esc(ago(a.time))}</div></div></div>`;
+  }).join("") : `<div class="empty">no actions verified yet</div>`;
+}
+
+function renderLearner(d){
+  const p4 = d.phase4 || {};
+  const kv = [
+    ["Max retries", p4.learner_max_retries!=null? p4.learner_max_retries : "—"],
+    ["Research", p4.learner_research? "on":"off"],
+  ];
+  $("learnerKV").innerHTML = kv.map(([k,v])=>`<div class="kv"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`).join("");
+  const notes = p4.learner_notes || [];
+  $("learnerNotes").innerHTML = notes.length ? notes.map(n=>`<div class="row">${esc(n)}</div>`).join("")
+    : `<div class="empty">no learner activity</div>`;
+}
+
+function renderSkills(d){
+  const sk = (d.phase4 && d.phase4.skills_list) || [];
+  const st = (d.phase4 && d.phase4.skills) || {};
+  $("skillCount").textContent = st.skills!=null? st.skills : sk.length;
+  $("skills").innerHTML = sk.length ? sk.map(s=>
+    `<div class="row"><span class="tag ${s.status==='active'?'PASS':'UNKNOWN'}">${esc(s.status||"?")}</span>
+      <div><b>${esc(s.trigger)}</b><div class="meta">✓ ${esc(s.success_count)} · ✗ ${esc(s.fail_count)} · ${esc(ago(s.last_used))}</div></div></div>`).join("")
+    : `<div class="empty">no skills yet — repeat a verified command ${esc(st.min_repeats? '×'+st.min_repeats : '')} to crystallize one</div>`;
+}
+
+function renderBus(d){
+  const b = (d.phase4 && d.phase4.bus) || {};
+  const kv = [
+    ["Published", b.published!=null? b.published:"—"],
+    ["Dispatched", b.dispatched!=null? b.dispatched:"—"],
+    ["Errors", b.errors!=null? b.errors:"—"],
+    ["Dropped", b.dropped!=null? b.dropped:"—"],
+  ];
+  $("busKV").innerHTML = kv.map(([k,v])=>`<div class="kv"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`).join("");
+}
+
+function provBlock(name, g){
+  if(!g) return "";
+  const sum = g.summary || {}; const cfg = g.configured_keys||0;
+  const att = sum.attempts||0, ok = sum.successes||0;
+  const rate = att ? Math.round(ok/att*100) : 0;
+  return `<div style="margin-bottom:12px">
+    <div class="kv"><span class="k">${esc(name)} keys</span><span class="v">${esc(cfg)} · ${esc(ok)}/${esc(att)} ok</span></div>
+    <div class="bar"><i style="width:${rate}%"></i></div>
+    <div class="mini" style="margin-top:3px">${rate}% success · ${esc(sum.rate_limits||0)} rate-limits · ${esc(sum.in_flight||0)} in-flight</div>
+  </div>`;
+}
+function renderPhase5(d){
+  const p5 = d.phase5 || {}; const h = p5.health || {}; const st = p5.stats || {};
+  $("p5Badges").innerHTML =
+    pill(!!h.planner, "planner on", "planner off") + " " +
+    pill(!!h.uia, "UIA ready", "UIA off") + " " +
+    pill(!!h.vision_fallback, "vision fallback", "no vision");
+  const kv = [
+    ["Plans run", st.plans!=null? st.plans : 0],
+    ["Steps done", st.steps_done!=null? st.steps_done : 0],
+    ["Steps skipped", st.steps_skipped!=null? st.steps_skipped : 0],
+    ["Steps failed", st.steps_failed!=null? st.steps_failed : 0],
+  ];
+  $("p5KV").innerHTML = kv.map(([k,v])=>`<span class="pill mut">${esc(k)}: ${esc(v)}</span>`).join(" ");
+  const lp = p5.last_plan;
+  const tagFor = (s)=> s==="DONE"?"PASS" : s==="FAILED"?"FAIL" : s==="learner"?"learner" : "UNKNOWN";
+  if(!lp){
+    $("p5Goal").textContent = "";
+    $("p5Steps").innerHTML = `<div class="empty">no multi-step plan yet — try “wifi on karo aur brightness 50”</div>`;
+    return;
+  }
+  const okTxt = lp.ok===null? "running…" : (lp.ok? "completed":"stopped early");
+  $("p5Goal").innerHTML = `<b>${esc(lp.goal||"—")}</b> · ${esc(lp.source||"")} · ${esc(okTxt)}`;
+  const steps = lp.steps || [];
+  $("p5Steps").innerHTML = steps.length ? steps.map(s=>
+    `<div class="row"><span class="tag ${tagFor(s.status)}">${esc(s.status||"?")}</span>
+      <div><b>${esc(s.index||"")}. ${esc(s.description||s.tool||"—")}</b>
+      <div class="meta">${esc(s.tool||"")}${s.reason?(" · "+esc(s.reason)):""}${s.source?(" · via "+esc(s.source)):""}</div></div></div>`).join("")
+    : `<div class="empty">plan has no steps</div>`;
+}
+
+function renderProviders(d){
+  const k = d.keys || {};
+  let html = provBlock("Groq", k.groq) + provBlock("Gemini", k.gemini);
+  $("providers").innerHTML = html || `<div class="empty">key monitor unavailable</div>`;
+}
+
+// agoAny: relative time for either unix seconds/ms OR ISO date strings.
+function agoAny(ts){
+  if(ts===null||ts===undefined||ts==="") return "";
+  let ms;
+  if(typeof ts==="number"){ ms = ts<1e12 ? ts*1000 : ts; }
+  else { const t = Date.parse(ts); if(isNaN(t)) return esc(String(ts)); ms = t; }
+  const s = Math.max(0, Math.floor((Date.now()-ms)/1000));
+  if(s<60) return s+"s ago";
+  if(s<3600) return Math.floor(s/60)+"m ago";
+  if(s<86400) return Math.floor(s/3600)+"h ago";
+  return Math.floor(s/86400)+"d ago";
+}
+
+function renderPhase6(d){
+  const p6 = d.phase6 || {}; const h = p6.health || {}; const st = p6.stats || {};
+  $("p6Badge").className = "pill " + (h.enabled? "ok":"mut");
+  $("p6Badge").textContent = h.enabled? (h.started?"on":"idle") : "off";
+  const hits = st.hits||0, misses = st.misses||0, total = hits+misses;
+  const rate = total ? Math.round(hits/total*100) : 0;
+  const kv = [["Hits",hits],["Misses",misses],["Promotions",st.promotions||0],["Evictions",st.evictions||0]];
+  $("p6KV").innerHTML = kv.map(([k,v])=>`<span class="pill mut">${esc(k)}: ${esc(v)}</span>`).join(" ");
+  $("p6Bar").style.width = rate+"%";
+  $("p6Rate").textContent = rate+"% hit-rate ("+hits+"/"+total+")";
+  const entries = p6.entries || [];
+  $("p6Entries").textContent = entries.length;
+  $("p6Recent").innerHTML = entries.length ? entries.map(e=>
+    `<div class="row"><span class="tag ${e.status==='active'?'PASS':'UNKNOWN'}">${esc(e.status||"?")}</span>
+      <div><b>${esc(e.trigger)}</b><div class="meta">${esc(e.kind||"")} · ✓${esc(e.hits||0)} · ✗${esc(e.fail_count||0)} · ${esc(agoAny(e.last_used))}</div></div></div>`).join("")
+    : `<div class="empty">no cached commands yet — repeat a verified command to cache it</div>`;
+}
+
+function renderPhase7(d){
+  const p7 = d.phase7 || {}; const h = p7.health || {}; const st = p7.stats || {};
+  $("p7Badge").className = "pill " + (h.enabled? "ok":"mut");
+  $("p7Badge").textContent = h.enabled? (h.auto_act?"auto":"suggest") : "off";
+  const kv = [["Events",st.events||0],["Suggested",st.suggested||0],["Accepted",st.accepted||0],["Dismissed",st.dismissed||0],["Suppressed",st.suppressed||0]];
+  $("p7KV").innerHTML = kv.map(([k,v])=>`<span class="pill mut">${esc(k)}: ${esc(v)}</span>`).join(" ");
+  const pend = p7.pending || [];
+  $("p7Pending").innerHTML = pend.length ? pend.map(p=>
+    `<div class="row"><span class="pill warn">${esc(p.action||"suggest")}</span>
+      <div><b>${esc(p.text||p.command||"—")}</b><div class="meta">${esc(p.trigger_kind||"")}${p.trigger_detail?(" · "+esc(p.trigger_detail)):""} · ${esc(agoAny(p.created_at))}</div></div></div>`).join("")
+    : `<div class="empty">no pending suggestions</div>`;
+  const rec = p7.recent || [];
+  $("p7Recent").innerHTML = rec.length ? rec.map(r=>
+    `<div class="row"><span class="tag UNKNOWN">${esc(r.action||"?")}</span>
+      <div><b>${esc(r.text||r.target||"—")}</b><div class="meta">${esc(agoAny(r.time))}</div></div></div>`).join("")
+    : `<div class="empty">no proactive activity yet</div>`;
+}
+
+function renderPhase8(d){
+  const p8 = d.phase8 || {}; const h = p8.health || {}; const st = p8.stats || {};
+  const kn = p8.knowledge || {};
+  $("p8Badge").className = "pill " + (h.enabled? "ok":"mut");
+  $("p8Badge").textContent = h.enabled? (h.started?"on":"idle") : "off";
+  const kv = [["Facts",st.facts||0],["Aliases",st.aliases||0],["Habits",st.habits||0],["Trusted",st.trusted_habits||0]];
+  $("p8KV").innerHTML = kv.map(([k,v])=>`<span class="pill mut">${esc(k)}: ${esc(v)}</span>`).join(" ");
+  const facts = kn.facts || [];
+  $("p8Facts").innerHTML = facts.length ? facts.map(f=>
+    `<div class="row"><span class="pill mut">${esc(f.source||"fact")}</span>
+      <div><b>${esc(f.key)}:</b> ${esc(f.value)}<div class="meta">${esc(agoAny(f.updated_at))}</div></div></div>`).join("")
+    : `<div class="empty">nothing learned yet — JARVIS notes facts as you chat</div>`;
+  const habits = kn.habits || [];
+  $("p8Habits").innerHTML = habits.length ? habits.map(hb=>
+    `<div class="row"><span class="tag ${hb.trusted?'PASS':'UNKNOWN'}">${hb.trusted?'trusted':'learning'}</span>
+      <div><b>${esc(hb.action)}</b><div class="meta">${esc(hb.context||"")} · ×${esc(hb.count||0)} · ${esc(agoAny(hb.last_seen))}</div></div></div>`).join("")
+    : `<div class="empty">no habits observed yet</div>`;
+}
+
+async function tick(){
+  try{
+    const r = await fetch("/api/dashboard/state", {cache:"no-store"});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    const d = await r.json();
+    setConn(true);
+    renderHealth(d); renderWatcher(d); renderActivity(d);
+    renderLearner(d); renderSkills(d); renderBus(d); renderProviders(d);
+    renderPhase5(d);
+    renderPhase6(d); renderPhase7(d); renderPhase8(d);
+    $("stamp").textContent = new Date().toLocaleTimeString();
+  }catch(e){
+    setConn(false);
+    $("stamp").textContent = "reconnecting… ("+e.message+")";
+  }
+}
+// --------------------------------------------------------------------- //
+// Command Tester (bulk live testing) -- POST + SSE stream reader.
+// Independent of the 2s dashboard poll above; uses its own ids.
+// --------------------------------------------------------------------- //
+const ctState = { running:false, sid:null, total:0, abort:null };
+
+function ctIcon(st){
+  return st==="PASS"?"✅":st==="FAIL"?"❌":st==="SKIPPED"?"⏭️":st==="RUNNING"?"⏳":"⚠️";
+}
+function ctCls(st){ return st==="PASS"?"PASS":st==="FAIL"?"FAIL":"UNKNOWN"; }
+
+function ctRowHtml(r){
+  const tagH = r.status==="RUNNING"
+    ? `<span class="pill warn">⏳ running…</span>`
+    : `<span class="tag ${ctCls(r.status)}">${ctIcon(r.status)} ${esc(r.status)}</span>`
+      + (r.soft?` <span class="pill mut" title="soft AI-judge — low confidence">soft</span>`:"");
+  const meta = [r.reason||"", (r.source&&r.source!=="none")?("via "+r.source):"", (r.tier&&r.tier!=="-")?r.tier:""]
+    .filter(Boolean).map(esc).join(" · ");
+  return `<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 2px;border-bottom:1px solid rgba(255,255,255,.06)">`
+    + `<span class="mini" style="min-width:20px;text-align:right;opacity:.6">${r.index}</span>`
+    + `<div style="flex:1;min-width:0"><div style="word-break:break-word">${esc(r.command)}</div>`
+    + (meta?`<div class="mini" style="margin-top:2px">${meta}</div>`:"") + `</div>`
+    + `<div style="white-space:nowrap">${tagH}</div></div>`;
+}
+
+function ctEnsureRow(index){
+  let row = $("ct-row-"+index);
+  if(!row){ row = document.createElement("div"); row.id = "ct-row-"+index; $("ctResults").appendChild(row); }
+  return row;
+}
+
+function ctRenderSummary(s){
+  const chips = [`<span class="pill ok">${s.passed}/${s.total} PASS</span>`];
+  if(s.failed) chips.push(`<span class="pill bad">${s.failed} FAIL</span>`);
+  if(s.skipped) chips.push(`<span class="pill warn">${s.skipped} SKIP</span>`);
+  if(s.unverified) chips.push(`<span class="pill mut">${s.unverified} UNVERIFIED</span>`);
+  if(s.soft) chips.push(`<span class="pill mut">${s.soft} soft</span>`);
+  if(s.phases){
+    const p = s.phases;
+    chips.push(`<span class="pill ok" title="Phase 6 — cache hits this session">⚡ ${p.cache_hits||0} cached</span>`);
+    chips.push(`<span class="pill mut" title="Phase 8 — habits learned (trusted)">🧠 ${p.habits||0} habits (${p.trusted_habits||0} trusted)</span>`);
+    chips.push(`<span class="pill warn" title="Phase 7 — pending suggestions">💡 ${p.pending_suggestions||0} suggestions</span>`);
+  }
+  let h = chips.join(" ");
+  if(s.failed_commands && s.failed_commands.length)
+    h += `<div class="mini" style="flex-basis:100%;margin-top:4px">Failed: ${s.failed_commands.map(esc).join(", ")}</div>`;
+  $("ctSummary").innerHTML = h;
+}
+
+function ctHandle(ev){
+  if(ev.event==="session"){
+    ctState.sid = ev.session_id; ctState.total = ev.total||0;
+    $("ctProgress").textContent = "0/"+ctState.total;
+  } else if(ev.event==="command_start"){
+    ctState.total = ev.total||ctState.total;
+    $("ctProgress").textContent = (ev.index-1)+"/"+ctState.total;
+    ctEnsureRow(ev.index).innerHTML = ctRowHtml({index:ev.index, command:ev.command, status:"RUNNING", reason:""});
+  } else if(ev.event==="command_result"){
+    ctEnsureRow(ev.index).innerHTML = ctRowHtml(ev);
+    $("ctProgress").textContent = ev.index+"/"+ctState.total;
+  } else if(ev.event==="summary"){
+    ctState.sid = ev.session_id || ctState.sid;
+    ctRenderSummary(ev);
+    $("ctBadge").className = "pill ok"; $("ctBadge").textContent = ev.stopped?"stopped":"done";
+    if(ctState.sid){
+      const a = $("ctDownload");
+      a.href = "/api/test-session/"+encodeURIComponent(ctState.sid)+"/logs";
+      a.setAttribute("download", ev.log_label||"logs.txt");
+      a.style.display = "inline-flex";
+    }
+  } else if(ev.event==="error"){
+    $("ctSummary").innerHTML = `<span class="pill bad">Error: ${esc(ev.message)}</span>`;
+  }
+}
+
+async function ctRun(){
+  if(ctState.running) return;
+  const cmds = ($("ctInput").value||"").split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  if(!cmds.length){ $("ctSummary").innerHTML = `<span class="pill warn">Add at least one command</span>`; return; }
+  ctState.running = true; ctState.sid = null; ctState.total = cmds.length;
+  $("ctRun").disabled = true; $("ctStop").disabled = false;
+  $("ctBadge").className = "pill warn"; $("ctBadge").textContent = "running";
+  $("ctResults").innerHTML = ""; $("ctSummary").innerHTML = ""; $("ctDownload").style.display = "none";
+  const ac = new AbortController(); ctState.abort = ac;
+  try{
+    const resp = await fetch("/api/test-session/run", {
+      method:"POST", headers:{"Content-Type":"application/json"}, signal: ac.signal,
+      body: JSON.stringify({ commands: cmds, judge: $("ctJudge").checked }),
+    });
+    if(!resp.ok || !resp.body) throw new Error("HTTP "+resp.status);
+    const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = "";
+    while(true){
+      const { value, done } = await reader.read();
+      if(done) break;
+      buf += dec.decode(value, {stream:true});
+      let idx;
+      while((idx = buf.indexOf("\n\n")) !== -1){
+        const frame = buf.slice(0, idx); buf = buf.slice(idx+2);
+        const line = frame.split("\n").find(l=>l.startsWith("data:"));
+        if(!line) continue;
+        let ev; try{ ev = JSON.parse(line.slice(5).trim()); }catch(_e){ continue; }
+        ctHandle(ev);
+      }
+    }
+  }catch(e){
+    if(e.name !== "AbortError")
+      $("ctSummary").innerHTML = `<span class="pill bad">Error: ${esc(e.message)}</span>`;
+    $("ctBadge").className = "pill mut"; $("ctBadge").textContent = e.name==="AbortError"?"stopped":"error";
+  }finally{
+    ctState.running = false; ctState.abort = null;
+    $("ctRun").disabled = false; $("ctStop").disabled = true;
+  }
+}
+
+function ctStop(){ if(ctState.abort){ try{ ctState.abort.abort(); }catch(_e){} } }
+
+if($("ctRun")) $("ctRun").addEventListener("click", ctRun);
+if($("ctStop")) $("ctStop").addEventListener("click", ctStop);
+
+tick();
+setInterval(tick, INTERVAL);
+</script>
+</body>
+</html>

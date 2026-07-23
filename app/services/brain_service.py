@@ -1,31 +1,39 @@
+"""
+Brain service — Stage-1 category classification only.
+
+This decides the high-level route for a user message:
+    general | realtime | camera | task | mixed
+
+It no longer extracts specific task types or payloads. All task execution is
+now handled by the agentic tool-calling loop (see app/services/agent/), where
+the LLM itself decides which tools to call. This removes the old brittle,
+hardcoded regex/keyword task parsing.
+
+  - task    : the user wants an action performed (handled by the agent loop)
+  - mixed   : the user wants an action AND a conversational answer (agent loop)
+  - camera  : the user wants the assistant to see something (vision)
+  - realtime: needs current/live info (web search)
+  - general : chat from knowledge only
+"""
+
 import logging
 import re
 import time
 from typing import List, Optional, Tuple, Literal
-from config import GROQ_API_KEYS, INTENT_CLASSIFY_MODEL
+
+from config import (
+    GROQ_API_KEYS,
+    INTENT_CLASSIFY_MODEL,
+    BRAIN_CLASSIFY_TIMEOUT,
+    GEMINI_BRAIN_MODEL,
+    GEMINI_CLASSIFY_TIMEOUT,
+)
+from app.services import llm_providers
 
 logger = logging.getLogger("J.A.R.V.I.S")
 
-CategoryType = Literal["general", "realtime", "camera", "task"]
+CategoryType = Literal["general", "realtime", "camera", "task", "mixed"]
 ALL_CATEGORIES: List[str] = ["general", "realtime", "camera", "task", "mixed"]
-
-TaskType = Literal[
-    "open", "play", "generate_image", "content",
-    "google_search", "youtube_search",
-    "gmail_inbox", "gmail_unread",
-    "calendar_list", "calendar_search", "calendar_create", "calendar_delete",
-    "drive_search", "drive_upload", "drive_list",
-    "open_webcam", "close_webcam",
-]
-
-ALL_TASK_TYPES: List[str] = [
-    "open", "play", "generate_image", "content",
-    "google_search", "youtube_search",
-    "gmail_inbox", "gmail_unread",
-    "calendar_list", "calendar_search", "calendar_create", "calendar_delete",
-    "drive_search", "drive_upload", "drive_list",
-    "open_webcam", "close_webcam",
-]
 
 MAX_CONTEXT_TURNS = 6
 MAX_MESSAGE_PREVIEW = 600
@@ -34,197 +42,58 @@ _PRIMARY_BRAIN_PROMPT = """You are the decision-maker for JARVIS. Classify the u
 
 === CATEGORIES ===
 
-**camera** — User wants to ANALYZE, IDENTIFY, or SEE something visual. They are holding, showing, or displaying something and want you to look at it.
-Examples: "What is this?" / "What am I holding?" / "What do you see?" / "Describe what I'm showing" / "Identify this" / "What's in my hand?" / "Look at this" / "Read this" / "Can you see this?" / "Check this out"
-- Any request where the user expects you to LOOK at something through the camera → camera
+**camera** — User wants to ANALYZE, IDENTIFY, SEE, or CAPTURE something visual through the camera.
+Examples: "What is this?" / "What am I holding?" / "What do you see?" / "Identify this" / "Look at this" / "Read this" / "Take a photo" / "Photo lo" / "Take a selfie" / "Camera on karke dekho" / "Capture this"
+- Capturing a photo/selfie with the camera is ALSO camera (the app opens the camera and captures). NOTE: "generate/draw/create an image of X" is NOT camera -> that is task (image generation).
 
-**task** — User wants ONLY an ACTION performed (no question to answer). Opening apps/websites, playing music/video, generating images, writing content, searching Google/YouTube, checking Gmail inbox/unread emails, reading or managing Google Calendar events, searching/uploading/listing Google Drive files, or controlling the webcam.
-Examples: "Open YouTube" / "Play despacito" / "Generate image of a cat" / "Write an essay about AI" / "Search for Python tutorials" / "Check my inbox" / "Show unread emails" / "Read my latest unread email" / "mail check kar" / "mera inbox dikha" / "koi nayi mail aayi hai kya" / "What are my events today?" / "Search my birthday event" / "Create a meeting tomorrow at 5 pm" / "Delete dentist appointment" / "Search Drive for resume" / "Upload C:\\Users\\me\\Desktop\\resume.pdf to Drive folder Jobs" / "List files in Projects folder" / "Open webcam" / "Close webcam" / "Launch Netflix" / "Go to Facebook" / "Make me a picture of a sunset" / "Draw a cat" / "Create an image of mountains"
-- ANY request to open, launch, play, generate, draw, create, write, draft, compose, search, check inbox, show unread emails, read mail, check calendar, create/delete an event, search/list/upload Drive files, or control webcam → task
-- "Open webcam" / "Turn on camera" / "Close webcam" / "Turn off camera" → task
-- Image/picture/drawing requests → task (NOT camera)
-- Requests to check the user's own Gmail inbox or unread emails are task EVEN if phrased as a question
-- Requests to check today's calendar, upcoming events, birthdays, reminders, or Drive contents are task EVEN if phrased as a question
+**task** — User wants an ACTION performed on their computer or browser. This includes:
+opening/closing apps, typing, clicking, taking screenshots, controlling volume/brightness, media control, system power, file operations, opening websites, playing music/video, searching Google/YouTube, generating images, writing content, checking Gmail, managing Google Calendar, and using Google Drive.
+Examples: "Open notepad" / "Type hello and save it" / "Set volume to 50" / "Take a screenshot" / "Open YouTube and play despacito" / "Generate an image of a cat" / "Write an essay about AI" / "Check my inbox" / "What are my events today" / "Shut down the PC" / "Increase brightness" / "Open chrome, go to gmail, click compose"
+- ANY request to do/perform/control something on the computer -> task
+- Multi-step automation (open X, then do Y, then click Z) -> task
+- Requests phrased as questions but asking to check inbox/calendar/drive -> task
+- PRINCIPLE: ANY question about THIS computer's OWN state or settings -> task. It must be READ from this machine via system tools, NEVER answered from the web. This covers Wi-Fi, Bluetooth, volume, mute, brightness, battery, and which apps/windows are open. Examples: "is wifi on?" / "wifi on hai kya" / "is bluetooth on?" / "kitna volume hai" / "is it muted" / "what windows are open". Device/settings state = local = task.
 
-**mixed** — User's message contains BOTH a conversational question AND a SPECIFIC EXPLICIT task (open/play/generate/write) in the SAME message.
-Examples: "What is machine learning? Also generate an image of a neural network" / "Tell me about Python and open YouTube" / "How does AI work? And write me an essay about it"
-- ONLY use mixed when the message has BOTH a question AND a clear action verb (open, play, generate, draw, write, search Google/YouTube)
-- "search on the internet" / "look it up" / "find out" are NOT tasks — they just mean the user wants information → realtime
-- If the user is just asking for information (even if they say "search"), use realtime, NOT mixed
-- When in doubt between mixed and realtime → realtime
+**mixed** — User's message contains BOTH a conversational question AND an action in the SAME message.
+Examples: "What is machine learning? Also generate an image of a neural network" / "Tell me about Python and open the docs website"
+- ONLY use mixed when there is a clear question AND a clear action together.
+- "search the internet" / "look it up" alone means they want info -> realtime, NOT mixed.
 
 **realtime** — User needs CURRENT, LIVE, or RECENT information that requires web search.
-Examples: "Who is Elon Musk?" / "Latest news" / "What's the weather?" / "Current stock price" / "Today's headlines" / "Tell me about [famous person]" / "What happened in [event]?" / "How much does X cost?" / "Reviews of X" / "Best restaurants near me"
-- Questions about PEOPLE (who is, tell me about), EVENTS (what happened), PRICES, REVIEWS, NEWS → realtime
-- Questions about anything that changes over time or needs up-to-date info → realtime
-- When unsure if your knowledge is current enough → realtime (PREFER realtime over general for factual questions)
+Examples: "Who is Elon Musk?" / "Latest news" / "What's the weather?" / "Current stock price" / "Tell me about [person/event]"
+- Questions about people, events, prices, reviews, news, anything time-sensitive -> realtime
+- When unsure if knowledge is current enough -> realtime
+- BUT NOT the user's OWN device state/settings (Wi-Fi, Bluetooth, volume, brightness, what's open). Those are LOCAL -> task, never realtime/web.
 
-**general** — Chat from knowledge only. No web search needed. ONLY for: greetings, casual chat, opinions, advice, coding help, math, static facts, personal questions about the user's stored data.
-Examples: "Hello" / "Tell me a joke" / "What is 2+2?" / "What is the capital of France?" / "How do I improve my coding?" / "Do you know my website?" / "What's the link of my website?" / "Thanks" / "You're funny" / "How are you?"
-- Greetings, casual chat, opinions, personal advice → general
-- Questions answerable from knowledge or stored user data → general
-- "Do you know my X?" / "What's my X?" → general (answer from stored data, NOT web search)
-- Static, unchanging facts (math, geography, definitions) → general
+**general** — Chat from knowledge only. No web search, no action needed.
+Examples: "Hello" / "Tell me a joke" / "What is 2+2?" / "Capital of France?" / "How do I improve my coding?" / "Thanks"
+- Greetings, casual chat, opinions, advice, static facts, personal stored data -> general
 
-=== CONTEXTUAL INTELLIGENCE ===
-CRITICAL: You MUST read the conversation history to understand context.
-
-**Corrections & Clarifications** — When the user corrects a previous response or clarifies something:
-- "No I said X not Y" / "It's X not Y" / "I meant X" / "Not that one, the other one" / "That's wrong" → classify the SAME category as the original request
-- Example: User said "open jarvis4everyone.com", assistant opened wrong site, user says "it's integer 4 not f-o-r" → STILL a task
-- Example: User asked a question, got wrong answer, says "no, I meant..." → STILL general/realtime
-
-**Follow-ups** — When the user continues a topic from previous messages:
-- "What about X?" / "And also..." / "Can you also..." / "More details" / "Elaborate" → classify based on what the follow-up is ASKING FOR, but consider prior context
-- "Do that again" / "Try again" / "One more time" / "Another one" → SAME category as the previous request
-
-**References to previous messages**:
-- "The one I just mentioned" / "Like I said" / "That website" / "That song" → resolve from conversation history, classify based on the actual intent
-
-=== DISAMBIGUATION RULES ===
-- "Draw/Generate/Create [X]" → task (image generation), NOT camera
-- "What is this?" / "What am I holding?" (no explicit generation request) → camera
-- "What is [concept]?" (asking about a topic, not pointing at something) → general or realtime
-- "Tell me about [person/company/event]" → realtime (needs current info)
-- "Tell me about [concept/theory]" → general (static knowledge)
-- "How to [do something]" → general (advice/tutorial)
-- "How is [something] doing?" / "How is [person]?" → realtime (needs current status)
-- "What's in my inbox?" / "Any unread emails?" / "Read my latest email" / "What are my events today?" / "Find birthday event" / "Search Drive for invoice" → task
+=== CONTEXT ===
+Read the conversation history. For corrections/clarifications ("no I meant...", "try again"),
+classify as the SAME category as the original request being corrected.
 
 === RULES ===
 - Output EXACTLY ONE word: general, realtime, camera, task, or mixed
-- Nothing else. No explanation. Just the category name.
-- Tasks (open, play, generate, write, search, Gmail, Calendar, Drive, webcam) ALONE → task
-- Question + task in SAME message → mixed
-- Corrections/clarifications → SAME category as the original request they are correcting
-- When in doubt between general and realtime → realtime
-- When in doubt between general and task → check if an ACTION is requested"""
+- Nothing else. No explanation.
+- Any computer/browser action -> task
+- Question + action together -> mixed
+- Any question about the user's OWN device/system state or settings (wifi, bluetooth, volume, brightness, battery, what's open) -> task (read locally, NEVER web)
+- When in doubt between general and realtime -> realtime
+- When in doubt whether an action is requested -> task"""
 
 
-_TASK_BRAIN_PROMPT = """You are a very accurate Decision-Making Model for JARVIS. You decide what kind of task the user wants and extract the CLEAN query/topic for each task.
+# Cap Gemini failover attempts in the routing path. Routing has an instant
+# rule-based safety net, so when Gemini is provider-wide degraded (503 "high
+# demand") we fast-fail after a few keys instead of cycling every key at ~4s
+# each -- the cause of the 14-22s classify times seen in the logs.
+_CLASSIFY_FAILOVER_KEYS = 3
 
-*** Do not answer any query, just decide what kind of task and extract the accurate query/topic. ***
-
-=== OUTPUT FORMAT ===
-Respond with: task_type clean_query
-For multiple tasks, separate with commas: task_type1 query1, task_type2 query2
-
-=== TASK TYPES & EXAMPLES ===
-
--> 'open (website/app name)' — Open a website or app.
-   "Open YouTube" → open youtube
-   "Go to Facebook and Instagram" → open facebook, open instagram
-   "Open jarvis4everyone.com" → open jarvis4everyone.com
-   "Launch Netflix" → open netflix
-
--> 'open_webcam' — Turn on camera/webcam.
-   "Open webcam" / "Turn on camera" / "Start the camera" → open_webcam
-
--> 'close_webcam' — Turn off camera/webcam.
-   "Close webcam" / "Turn off camera" / "Stop camera" → close_webcam
-
--> 'play (song/video name)' — Play music or video on YouTube.
-   "Play Dhurandhar title track" → play Dhurandhar title track
-   "Hello Jarvis can you play Shape of You on YouTube" → play Shape of You
-   "Hey Jarvis Teja song Dhurandhar title track can you play that on YouTube" → play Teja Dhurandhar title track
-   "Play some relaxing music" → play relaxing music
-   "Put on some jazz" → play jazz music
-
--> 'generate_image (image prompt)' — Generate/draw/create an image or picture.
-   "Generate image of a cat" → generate_image a cat
-   "Draw a sunset over mountains" → generate_image sunset over mountains
-   "Can you make me a picture of Iron Man" → generate_image Iron Man
-   "Create an image of a futuristic city" → generate_image futuristic city
-   "Make a logo for my brand" → generate_image logo design
-   IMPORTANT: The prompt should be DESCRIPTIVE. Keep the full visual description, add detail if user was vague.
-
--> 'content (topic)' — Write content (essay, poem, letter, code, email, etc.)
-   "Write an essay about AI" → content essay about AI
-   "Draft a leave application" → content leave application
-   "Can you write me a poem about love" → content poem about love
-   "Write Python code for sorting" → content Python code for sorting algorithm
-   "Write an email to my boss" → content professional email to boss
-
--> 'google_search (search topic)' — Search something on Google.
-   "Search for Python tutorials" → google_search Python tutorials
-   "Google what is quantum computing" → google_search what is quantum computing
-   "Hey Jarvis look up best restaurants nearby" → google_search best restaurants nearby
-
--> 'youtube_search (search topic)' — Search on YouTube (NOT play, just search).
-   "Search YouTube for cooking recipes" → youtube_search cooking recipes
-   "Find videos about machine learning on YouTube" → youtube_search machine learning
-
--> 'gmail_inbox' — Check recent inbox emails.
-   "Check my inbox" → gmail_inbox
-   "Show my recent emails" → gmail_inbox
-   "Aaj ka inbox batao" → gmail_inbox
-   "Mera inbox dikha" → gmail_inbox
-   "Mail check kar" → gmail_inbox
-
--> 'gmail_unread' — Show unread emails or read latest unread email.
-   "Show unread emails" → gmail_unread
-   "Kitne unread emails hain" → gmail_unread
-   "Read my latest unread email" → gmail_unread
-   "Koi nayi mail aayi hai kya" → gmail_unread
-   "Unread mail padh ke bata" → gmail_unread
-
--> 'calendar_list (time scope)' — Show today's or upcoming events.
-   "What are my events today" → calendar_list today
-   "Show my upcoming events" → calendar_list upcoming
-   "Aaj ke calendar events batao" → calendar_list today
-
--> 'calendar_search (event query)' — Search a specific event, reminder, or birthday.
-   "Search my birthday event" → calendar_search birthday
-   "Find Rahul meeting in calendar" → calendar_search Rahul meeting
-   "Calendar me dentist appointment dhoondo" → calendar_search dentist appointment
-
--> 'calendar_create (event details)' — Create a new event or reminder.
-   "Create a meeting tomorrow at 5 pm" → calendar_create meeting tomorrow at 5 pm
-   "Add doctor appointment on 5 June at 10 am" → calendar_create doctor appointment on 5 June at 10 am
-   "Kal shaam 7 baje mom birthday reminder laga do" → calendar_create mom birthday reminder tomorrow evening 7 pm
-
--> 'calendar_delete (event query)' — Delete or remove an event.
-   "Delete my dentist appointment tomorrow" → calendar_delete dentist appointment tomorrow
-   "Remove Rahul birthday reminder" → calendar_delete Rahul birthday reminder
-
--> 'drive_search (file query)' — Search Google Drive files by name.
-   "Search Drive for invoice" → drive_search invoice
-   "Find resume in my drive" → drive_search resume
-   "Drive me project report dhoondo" → drive_search project report
-
--> 'drive_upload (upload request)' — Upload a local file to Google Drive.
-   "Upload C:\\Users\\me\\Desktop\\resume.pdf to Drive folder Jobs" → drive_upload C:\\Users\\me\\Desktop\\resume.pdf to folder Jobs
-   "Drive pe C:\\Work\\notes.txt upload karo" → drive_upload C:\\Work\\notes.txt
-
--> 'drive_list (folder query)' — List files or folders from Drive root or a Drive folder.
-   "List my Drive files" → drive_list
-   "Show files in Projects folder" → drive_list Projects folder
-   "Drive ke folders dikhao" → drive_list drive folders
-
-=== CONTEXTUAL CORRECTIONS ===
-When the user is correcting a previous task, use conversation history to understand the original intent:
-- "it's integer 4 not f-o-r" (after "open jarvisforeveryone.com") → open jarvis4everyone.com
-- "no, the other one" (after "play X") → play (corrected song name from context)
-- "not that song, I meant the remix" → play (original song name remix)
-
-=== CRITICAL RULES ===
-*** Extract ONLY the relevant topic/query — REMOVE greetings (hello, hey, hi), assistant name (Jarvis), filler words (can you, please, for me), platform names (on YouTube, on Google), and command words from the query. ***
-*** "Open webcam" / "Turn on camera" / "Start camera" → open_webcam (NEVER "open webcam" as a website) ***
-*** "Close webcam" / "Turn off camera" → close_webcam ***
-*** "Check inbox" / "show unread emails" / "read my latest email" / "mail check kar" / "koi nayi mail" → gmail_inbox or gmail_unread, NOT google_search ***
-*** "today's events" / "upcoming events" / "birthday in calendar" / "create event" / "delete reminder" → calendar_list/calendar_search/calendar_create/calendar_delete, NOT google_search ***
-*** "search drive" / "find file in drive" / "upload ... to drive" / "list drive files" → drive_search/drive_upload/drive_list, NOT google_search ***
-*** For multiple tasks in one message: "Open Facebook and play Despacito" → open facebook, play Despacito ***
-*** If user says to play AND you detect YouTube context, output ONLY 'play (query)' — do NOT add a separate youtube_search. Playing IS searching YouTube. ***
-*** "Draw/Generate/Create [image description]" → generate_image (keep full visual description) ***
-*** Output ONLY the structured response. No explanation. No extra text. ***"""
 
 class BrainService:
-
     def __init__(self, groq_service=None):
         self.groq_service = groq_service
         self._llms = []
-        self._last_task_decisions = []
 
         if GROQ_API_KEYS:
             try:
@@ -234,20 +103,47 @@ class BrainService:
                         groq_api_key=key,
                         model_name=INTENT_CLASSIFY_MODEL,
                         temperature=0.0,
-                        max_tokens=200,
-                        request_timeout=15,
+                        # gpt-oss is a REASONING model: it spends tokens "thinking"
+                        # before emitting the final word. 20 tokens was far too few,
+                        # so the answer got truncated and parsing fell back to
+                        # "general" (every action was misrouted). Give it room.
+                        max_tokens=512,
+                        request_timeout=BRAIN_CLASSIFY_TIMEOUT,
+                        max_retries=0,
                     )
                     for key in GROQ_API_KEYS
                 ]
-
-                logger.info("[BRAIN] Two-stage decision model initialized (%s) with %d key(s)",
+                logger.info("[BRAIN] Category classifier initialized (%s) with %d key(s)",
                             INTENT_CLASSIFY_MODEL, len(self._llms))
-                
             except Exception as e:
                 logger.warning("[BRAIN] Failed to create Groq: %s", e)
-                
-        if not self._llms and not groq_service:
-            logger.warning("[BRAIN] No Groq. Will use rule-based fallback.")
+
+        if not self._llms:
+            logger.warning("[BRAIN] No Groq LLM. Will use rule-based fallback.")
+
+        # Optional Gemini classifier (secondary provider). Used for failover and,
+        # when race mode is on, fired in parallel with Groq (first answer wins).
+        self.last_provider_event = None
+        self._gemini_llms = []
+        if llm_providers.gemini_enabled():
+            try:
+                self._gemini_llms = [
+                    llm_providers.make_langchain_llm(
+                        idx,
+                        model=GEMINI_BRAIN_MODEL,
+                        temperature=0.0,
+                        max_tokens=512,
+                        timeout=GEMINI_CLASSIFY_TIMEOUT,
+                    )
+                    for idx in range(llm_providers.key_count())
+                ]
+                logger.info(
+                    "[BRAIN] Gemini classifier ready with %d key(s) (failover only; routing is not raced)",
+                    len(self._gemini_llms),
+                )
+            except Exception as e:
+                logger.warning("[BRAIN] Failed to create Gemini classifier: %s", e)
+                self._gemini_llms = []
 
     def classify_primary(
         self,
@@ -261,981 +157,247 @@ class BrainService:
 
         user_content = self._build_context(msg, chat_history)
         t0 = time.perf_counter()
-
-        category, method = self._run_llm(
-            _PRIMARY_BRAIN_PROMPT, user_content, key_index, ALL_CATEGORIES, "general"
-        )
-
+        self.last_provider_event = None
+        # Routing is a precise decision (not fungible text), so we deliberately do
+        # NOT race two different models here -- racing made the route inconsistent
+        # (e.g. "latest news" sometimes landed on 'general'). Groq decides for
+        # consistency, with Gemini as failover only (handled inside _run_llm).
+        category, method = self._run_llm(user_content, key_index)
         elapsed_ms = int((time.perf_counter() - t0) * 1000)
         logger.info("[BRAIN-PRIMARY] %s -> %s (%d ms, %s)", msg[:50], category, elapsed_ms, method)
         return (category, method, elapsed_ms)
 
-    _TASK_FEW_SHOTS = [
-        ("how are you?", "general how are you?"),
-        ("open chrome and tell me about mahatma gandhi.", "open chrome, general tell me about mahatma gandhi"),
-        ("open chrome and firefox", "open chrome, open firefox"),
-        ("play Dhurandhar title track on YouTube", "play Dhurandhar title track"),
-        ("hello Jarvis can you play Shape of You", "play Shape of You"),
-        ("generate image of a lion and open facebook", "generate_image a lion, open facebook"),
-        ("search for Python tutorials on google", "google_search Python tutorials"),
-        ("search YouTube for cooking recipes", "youtube_search cooking recipes"),
-        ("check my inbox", "gmail_inbox"),
-        ("show unread emails", "gmail_unread"),
-        ("read my latest unread email", "gmail_unread"),
-        ("mail check kar", "gmail_inbox"),
-        ("mera inbox dikha", "gmail_inbox"),
-        ("koi nayi mail aayi hai kya", "gmail_unread"),
-        ("unread mail padh ke bata", "gmail_unread"),
-        ("what are my events today", "calendar_list today"),
-        ("show my upcoming calendar events", "calendar_list upcoming"),
-        ("search my birthday event", "calendar_search birthday"),
-        ("create a meeting tomorrow at 5 pm", "calendar_create meeting tomorrow at 5 pm"),
-        ("delete dentist appointment tomorrow", "calendar_delete dentist appointment tomorrow"),
-        ("search drive for resume", "drive_search resume"),
-        ("upload C:\\Users\\me\\Desktop\\resume.pdf to Drive folder Jobs", "drive_upload C:\\Users\\me\\Desktop\\resume.pdf to folder Jobs"),
-        ("list files in Projects folder", "drive_list Projects folder"),
-        ("write an application for leave and play some music", "content application for leave, play some music"),
-        ("hey Jarvis Teja song Dhurandhar title track can you play that on YouTube", "play Teja Dhurandhar title track"),
-        ("can you open the website Jarvis for everyone", "open jarvisforeveryone.com"),
-        ("draw me a beautiful sunset over the ocean", "generate_image beautiful sunset over the ocean"),
-        ("can you make a picture of a dragon breathing fire", "generate_image dragon breathing fire"),
-        ("create an image of a futuristic city at night", "generate_image futuristic city at night"),
-        ("write me a poem about the stars", "content poem about the stars"),
-        ("open webcam", "open_webcam"),
-        ("turn off the camera", "close_webcam"),
-        ("play some lo-fi beats", "play lo-fi beats"),
-        ("open YouTube and play Arijit Singh songs", "open youtube, play Arijit Singh songs"),
-    ]
-
-    def classify_task(
-        self,
-        user_message: str,
-        chat_history: Optional[List[Tuple[str, str]]] = None,
-        key_index: int = 0,
-    ) -> Tuple[List[str], str, int]:
-        msg = (user_message or "").strip()
-        if not msg:
-            self._last_task_decisions = []
-            return (["open"], "empty", 0)
-
-        m_lower = msg.lower()
-        if any(x in m_lower for x in ["open webcam", "turn on camera", "start camera",
-                                        "open the webcam", "start the camera", "turn on the camera"]):
-            self._last_task_decisions = [("open_webcam", "")]
-            return (["open_webcam"], "rule-fast", 0)
-        
-        if any(x in m_lower for x in ["close webcam", "turn off camera", "stop camera",
-                                        "close the webcam", "stop the camera", "turn off the camera"]):
-            self._last_task_decisions = [("close_webcam", "")]
-            return (["close_webcam"], "rule-fast", 0)
-
-        context_lines = []
-
-        if chat_history:
-            for u, a in chat_history[-MAX_CONTEXT_TURNS:]:
-                u_preview = (u or "")[:MAX_MESSAGE_PREVIEW] + ("…" if len(u or "") > MAX_MESSAGE_PREVIEW else "")
-                a_preview = (a or "")[:MAX_MESSAGE_PREVIEW] + ("…" if len(a or "") > MAX_MESSAGE_PREVIEW else "")
-                context_lines.append(f"User: {u_preview}")
-                context_lines.append(f"Assistant: {a_preview}")
-
-        context_block = "\n".join(context_lines) if context_lines else ""
-        context_section = f"Recent conversation:\n{context_block}\n\n" if context_block else ""
-        user_content = f"{context_section}User: {msg[:MAX_MESSAGE_PREVIEW]}"
-        t0 = time.perf_counter()
-
-        raw_response, method = self._run_llm_structured(
-            _TASK_BRAIN_PROMPT, user_content, key_index)
-
-        decisions = self._parse_task_decisions(raw_response)
-        self._last_task_decisions = decisions
-        task_types = [d[0] for d in decisions]
-
-        elapsed_ms = int((time.perf_counter() - t0) * 1000)
-        logger.info("[BRAIN-TASK] %s -> %s (%d ms, %s)", msg[:50], decisions, elapsed_ms, method)
-        return (task_types, method, elapsed_ms)
-
-    def classify(
-        self,
-        user_message: str,
-        chat_history: Optional[List[Tuple[str, str]]] = None,
-        key_index: int = 0,
-    ) -> Tuple[str, List[str], str, int]:
-        category, method1, ms1 = self.classify_primary(user_message, chat_history, key_index)
-
-        if category == "task":
-            task_types, method2, ms2 = self.classify_task(user_message, chat_history, key_index)
-            combined_method = f"{method1}+{method2}"
-            return (category, task_types, combined_method, ms1 + ms2)
-
-        return (category, [], method1, ms1)
-
-    def extract_task_payloads(
-        self, user_message: str, task_types: List[str],
-        chat_history: Optional[List[Tuple[str, str]]] = None,
-    ) -> List[Tuple[str, dict]]:
-        from app.services.decision_types import ROUTE_TO_INTENT, INTENT_OPEN
-
-        decisions = getattr(self, '_last_task_decisions', [])
-
-        intents = []
-
-        if decisions:
-            for task_type, clean_query in decisions:
-                intent_key = ROUTE_TO_INTENT.get(task_type, task_type)
-                payload = {"message": user_message, "raw": user_message}
-
-                if task_type == "open":
-                    url = self._resolve_open_query(clean_query) if clean_query else "https://www.google.com"
-                    payload["url"] = url
-                elif task_type == "play":
-                    payload["query"] = clean_query or user_message
-                elif task_type in ("google_search", "youtube_search"):
-                    payload["query"] = clean_query or user_message
-                elif task_type == "generate_image":
-                    payload["prompt"] = clean_query or user_message
-                elif task_type == "content":
-                    payload["prompt"] = clean_query or user_message
-                elif task_type in (
-                    "calendar_list", "calendar_search", "calendar_create", "calendar_delete",
-                    "drive_search", "drive_list",
-                ):
-                    payload["query"] = clean_query or self._extract_task_query(task_type, user_message)
-                elif task_type == "drive_upload":
-                    payload["query"] = clean_query or user_message
-                intents.append((intent_key, payload))
-
-        else:
-            resolved_message = self._resolve_correction(user_message, chat_history)
-
-            for task_type in task_types:
-                intent_key = ROUTE_TO_INTENT.get(task_type, task_type)
-                payloads = self._extract_payload(task_type, resolved_message)
-
-                if isinstance(payloads, list):
-                    for p in payloads:
-                        intents.append((intent_key, p))
-
-                else:
-                    intents.append((intent_key, payloads))
-
-        return intents
-
-    def _resolve_open_query(self, query: str) -> str:
-
-        q = query.strip().lower()
-
-        if q in self.SITE_MAP:
-            return self.SITE_MAP[q]
-
-        if "." in q:
-            return f"https://{q}" if not q.startswith("http") else q
-
-        if q in self.SITE_MAP:
-            return self.SITE_MAP[q]
-
-        return f"https://www.{q}.com"
-
-    def _resolve_correction(self, msg: str, chat_history: Optional[List[Tuple[str, str]]] = None) -> str:
-
-        if not chat_history:
-            return msg
-
-        m_lower = msg.lower().strip()
-        correction_signals = ["not that", "no i said", "no, i said", "i meant", "it's not", "its not",
-                              "that's wrong", "thats wrong", "not f-o-r", "not for ",
-                              "the other", "try again", "do that again", "one more time",
-                              "no no", "wrong one", "instead", "i didn't say"]
-        
-        is_correction = any(sig in m_lower for sig in correction_signals)
-
-        if not is_correction:
-            return msg
-
-        for u, a in reversed(chat_history[-MAX_CONTEXT_TURNS:]):
-            u_lower = (u or "").lower()
-
-            if any(sig in u_lower for sig in correction_signals):
-                continue
-
-            if any(p in u_lower for p in ["open ", "play ", "search ", "generate ", "write ", "launch ", "go to "]):
-                logger.info("[BRAIN] Correction detected. Original: '%s' | Correction: '%s'", u[:80], msg[:80])
-
-                import re
-                domain_match = re.search(r'([a-zA-Z0-9][-a-zA-Z0-9]*(?:\.[a-zA-Z]{2,})+)', msg)
-
-                if domain_match:
-                    new_domain = domain_match.group(1)
-                    return f"open {new_domain}"
-
-                return f"{u} (correction: {msg})"
-            
-            break
-
-        return msg
-
     def _build_context(self, msg: str, chat_history: Optional[List[Tuple[str, str]]] = None) -> str:
-
         context_lines = []
-
         if chat_history:
             for u, a in chat_history[-MAX_CONTEXT_TURNS:]:
-                u_preview = (u or "")[:MAX_MESSAGE_PREVIEW] + ("…" if len(u or "") > MAX_MESSAGE_PREVIEW else "")
-                a_preview = (a or "")[:MAX_MESSAGE_PREVIEW] + ("…" if len(a or "") > MAX_MESSAGE_PREVIEW else "")
+                u_preview = (u or "")[:MAX_MESSAGE_PREVIEW]
+                a_preview = (a or "")[:MAX_MESSAGE_PREVIEW]
                 context_lines.append(f"User: {u_preview}")
                 context_lines.append(f"Assistant: {a_preview}")
         context_block = "\n".join(context_lines) if context_lines else "(No prior conversation)"
         msg_preview = msg[:MAX_MESSAGE_PREVIEW]
-
-        correction_hint = ""
-        m_lower = msg.lower().strip()
-        correction_signals = ["not that", "no i said", "no, i said", "i meant", "it's not", "its not",
-                              "that's wrong", "thats wrong", "i said", "not f-o-r", "not for",
-                              "the other", "try again", "do that again", "one more time",
-                              "no no", "wrong one", "instead", "i didn't say", "not what i"]
-        
-        if any(sig in m_lower for sig in correction_signals):
-            correction_hint = "\n\nNOTE: This message appears to be a CORRECTION or CLARIFICATION of a previous request. Check the conversation history to determine what the user originally asked for, and classify this message as the SAME category as that original request."
-
         return f"""Conversation so far:
 {context_block}
 
-Current user message: {msg_preview}{correction_hint}
+Current user message: {msg_preview}
 
 Classify. Output EXACTLY ONE category name."""
 
-    def _run_llm(
-        self, system_prompt: str, user_content: str, key_index: int,
-        valid_options: List[str], default: str
-    ) -> Tuple[str, str]:
-        
+    def _run_llm(self, user_content: str, key_index: int) -> Tuple[str, str]:
+        # Primary: Groq (fast, primary-first key). On failure fall over to Gemini
+        # (if enabled), then finally the rule-based classifier.
         if self._llms:
             try:
-                from langchain_core.messages import SystemMessage, HumanMessage
-                from app.services.api_key_monitor import get_api_key_monitor
-                idx = key_index % len(self._llms)
-                llm = self._llms[idx]
-                monitor = get_api_key_monitor()
-                monitor.record_groq_attempt(idx, operation="brain_primary", source="brain_service")
-                t0_llm = time.perf_counter()
-                
-                response = llm.invoke([
-                    SystemMessage(content=system_prompt),
-                    HumanMessage(content=user_content),
-                ])
-                
-                latency_ms = int((time.perf_counter() - t0_llm) * 1000)
-                monitor.record_groq_success(idx, operation="brain_primary", source="brain_service", latency_ms=latency_ms)
-                
-                text = (response.content or "").strip().lower()
-                result = self._parse_single(text, valid_options, default)
-                return (result, "llm")
-            
+                category, idx = self._groq_once(user_content, key_index)
+                self._provider_event("groq", idx, failover=False)
+                return (category, "llm")
             except Exception as e:
-                if 'monitor' in locals() and 'idx' in locals():
-                    latency = int((time.perf_counter() - t0_llm) * 1000) if 't0_llm' in locals() else 0
-                    is_rl = "429" in str(e) or "rate limit" in str(e).lower()
-                    monitor.record_groq_failure(idx, operation="brain_primary", source="brain_service", error=str(e), is_rate_limit=is_rl, latency_ms=latency)
-                logger.warning("[BRAIN] LLM failed: %s. Using rule-based.", e)
+                logger.warning("[BRAIN] Groq classify failed: %s", e)
+
+        if self._gemini_llms:
+            try:
+                category, idx = self._gemini_attempt(
+                    user_content, single=False, max_keys=_CLASSIFY_FAILOVER_KEYS)
+                self._provider_event("gemini", idx, failover=True)
+                logger.info("[BRAIN] Gemini fallback classify succeeded (key #%d)", idx + 1)
+                return (category, "llm")
+            except Exception as e:
+                logger.warning("[BRAIN] Gemini classify failed: %s", e)
 
         msg = user_content.split("Current user message:")[-1].strip()[:500] if "Current user message:" in user_content else user_content[:500]
-        result = self._rule_based_primary(msg)
-        return (result, "rule-based")
+        return (self._rule_based_primary(msg), "rule-based")
 
-    def _run_llm_multi(
-        self, system_prompt: str, user_content: str, key_index: int,
-        valid_options: List[str]
-    ) -> Tuple[List[str], str]:
-        
-        if self._llms:
+    def _provider_event(self, provider: str, key_index: int, failover: bool = False, race: bool = False):
+        """Record which provider/key answered the brain classification."""
+        if provider == "gemini":
+            label = "GEMINI_API_KEY" if key_index == 0 else f"GEMINI_API_KEY_{key_index + 1}"
+            pretty = "Gemini"
+        else:
+            label = "GROQ_API_KEY" if key_index == 0 else f"GROQ_API_KEY_{key_index + 1}"
+            pretty = "Groq"
+        if race:
+            message = f"Brain race \u2192 {pretty} ({label}) won"
+            event = "provider_race"
+        elif failover:
+            message = f"Brain \u2192 {pretty} ({label}) (failover)"
+            event = "provider_failover"
+        else:
+            message = f"Brain \u2192 {pretty} ({label})"
+            event = "llm_provider"
+        self.last_provider_event = {
+            "event": event,
+            "provider": provider,
+            "key_index": key_index,
+            "key_label": label,
+            "operation": "brain_classify",
+            "failover": bool(failover),
+            "race": bool(race),
+            "message": message,
+            "route": "brain",
+        }
+        return self.last_provider_event
+
+    def _groq_once(self, user_content: str, key_index: int) -> Tuple[str, int]:
+        """Single Groq classification attempt on one key. Raises on failure."""
+        from langchain_core.messages import SystemMessage, HumanMessage
+        from app.services.api_key_monitor import get_api_key_monitor
+        idx = key_index % len(self._llms)
+        monitor = get_api_key_monitor()
+        monitor.record_groq_attempt(idx, operation="brain_primary", source="brain_service")
+        t0_llm = time.perf_counter()
+        try:
+            response = self._llms[idx].invoke([
+                SystemMessage(content=_PRIMARY_BRAIN_PROMPT),
+                HumanMessage(content=user_content),
+            ])
+            latency_ms = int((time.perf_counter() - t0_llm) * 1000)
+            monitor.record_groq_success(idx, operation="brain_primary", source="brain_service", latency_ms=latency_ms)
+            return (self._parse_single((response.content or "").strip().lower()), idx)
+        except Exception as e:
+            latency_ms = int((time.perf_counter() - t0_llm) * 1000)
+            is_rl = "429" in str(e) or "rate limit" in str(e).lower()
+            monitor.record_groq_failure(idx, operation="brain_primary", source="brain_service", error=str(e), is_rate_limit=is_rl, latency_ms=latency_ms)
+            raise
+
+    def _gemini_attempt(self, user_content: str, single: bool = False,
+                        max_keys: Optional[int] = None) -> Tuple[str, int]:
+        """Gemini classification. single=True tries just one key (for racing).
+
+        max_keys caps how many keys we cycle before giving up. The routing
+        failover path passes a small cap so a provider-wide outage (Gemini 503
+        'high demand') fast-fails to the instant rule-based classifier instead
+        of spending ~4s per key across every key -- the cause of the 14-22s
+        classify times seen in the logs."""
+        from langchain_core.messages import SystemMessage, HumanMessage
+        from app.services.api_key_monitor import get_api_key_monitor
+        monitor = get_api_key_monitor()
+        order = llm_providers.ordered_keys()
+        if single and order:
+            order = order[:1]
+        elif max_keys is not None and order:
+            order = order[:max_keys]
+        last_exc = None
+        for idx in order:
+            if idx >= len(self._gemini_llms):
+                continue
+            monitor.record_gemini_attempt(idx, operation="brain_primary", source="brain_service")
+            t0 = time.perf_counter()
             try:
-                from langchain_core.messages import SystemMessage, HumanMessage
-                from app.services.api_key_monitor import get_api_key_monitor
-                idx = key_index % len(self._llms)
-                llm = self._llms[idx]
-                monitor = get_api_key_monitor()
-                monitor.record_groq_attempt(idx, operation="brain_multi", source="brain_service")
-                t0_llm = time.perf_counter()
-                
-                response = llm.invoke([
-                    SystemMessage(content=system_prompt),
+                response = self._gemini_llms[idx].invoke([
+                    SystemMessage(content=_PRIMARY_BRAIN_PROMPT),
                     HumanMessage(content=user_content),
                 ])
-                
-                latency_ms = int((time.perf_counter() - t0_llm) * 1000)
-                monitor.record_groq_success(idx, operation="brain_multi", source="brain_service", latency_ms=latency_ms)
-                
-                text = (response.content or "").strip().lower()
-                results = self._parse_multi(text, valid_options)
-                return (results, "llm")
-            
+                latency_ms = int((time.perf_counter() - t0) * 1000)
+                monitor.record_gemini_success(idx, operation="brain_primary", source="brain_service", latency_ms=latency_ms)
+                return (self._parse_single((response.content or "").strip().lower()), idx)
             except Exception as e:
-                if 'monitor' in locals() and 'idx' in locals():
-                    latency = int((time.perf_counter() - t0_llm) * 1000) if 't0_llm' in locals() else 0
-                    is_rl = "429" in str(e) or "rate limit" in str(e).lower()
-                    monitor.record_groq_failure(idx, operation="brain_multi", source="brain_service", error=str(e), is_rate_limit=is_rl, latency_ms=latency)
-                logger.warning("[BRAIN-TASK] LLM failed: %s. Using rule-based.", e)
-
-        msg = user_content.split("User task request:")[-1].strip()[:500] if "User task request:" in user_content else user_content[:500]
-        results = self._rule_based_task(msg)
-        return (results, "rule-based")
-
-    def _parse_single(self, text: str, valid_options: List[str], default: str) -> str:
-
-        if not text:
-            return default
-        
-        text = text.strip().lower()
-
-        for opt in valid_options:
-            if text == opt:
-                return opt
-
-        for opt in valid_options:
-            if opt in text:
-                return opt
-        return default
-
-    def _parse_multi(self, text: str, valid_options: List[str]) -> List[str]:
-
-        if not text:
-            return ["open"]
-        
-        results = []
-        seen = set()
-
-        for part in re.split(r"[,;\s]+", text):
-            r = part.strip().lower()
-
-            if not r:
+                last_exc = e
+                latency_ms = int((time.perf_counter() - t0) * 1000)
+                rl = llm_providers.is_rate_limit_error(e)
+                monitor.record_gemini_failure(idx, operation="brain_primary", source="brain_service", error=str(e), is_rate_limit=rl, latency_ms=latency_ms)
+                llm_providers.trip(idx)
                 continue
+        raise last_exc if last_exc is not None else RuntimeError("No Gemini keys available")
 
-            for valid in valid_options:
+    def _race_classify(self, user_content: str, key_index: int) -> Tuple[str, str]:
+        """Fire Groq and Gemini together; take whichever answers first (the 'cool'
+        race the user liked). Side-effect-free, so racing is safe here."""
+        import concurrent.futures
 
-                if valid == r or valid in r:
-                    if valid not in seen:
-                        results.append(valid)
-                        seen.add(valid)
+        def groq_task():
+            return ("groq",) + self._groq_once(user_content, key_index)
+
+        def gem_task():
+            cat, idx = self._gemini_attempt(user_content, single=True)
+            return ("gemini", cat, idx)
+
+        winner = None
+        ex = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+        try:
+            futs = [ex.submit(groq_task), ex.submit(gem_task)]
+            for fut in concurrent.futures.as_completed(futs):
+                try:
+                    provider, cat, idx = fut.result()
+                    winner = (provider, cat, idx)
                     break
+                except Exception as e:
+                    logger.warning("[BRAIN-RACE] provider failed: %s", e)
+                    continue
+        finally:
+            # Don't block on the loser; the leftover request finishes in the background.
+            ex.shutdown(wait=False)
 
-        return results if results else ["open"]
+        if winner:
+            provider, cat, idx = winner
+            self._provider_event(provider, idx, race=True)
+            logger.info("[BRAIN-RACE] %s won the race -> %s", provider, cat)
+            return (cat, "llm")
 
-    def _run_llm_structured(
-        self, system_prompt: str, user_content: str, key_index: int,
-    ) -> Tuple[str, str]:
-        
-        from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+        msg = user_content.split("Current user message:")[-1].strip()[:500] if "Current user message:" in user_content else user_content[:500]
+        return (self._rule_based_primary(msg), "rule-based")
 
-        few_shot_msgs = []
-        for user_ex, ai_ex in self._TASK_FEW_SHOTS:
-            few_shot_msgs.append(HumanMessage(content=f"User: {user_ex}"))
-            few_shot_msgs.append(AIMessage(content=ai_ex))
-
-        messages = [SystemMessage(content=system_prompt)] + few_shot_msgs + [HumanMessage(content=user_content)]
-
-        if self._llms:
-
-            try:
-                from app.services.api_key_monitor import get_api_key_monitor
-                idx = key_index % len(self._llms)
-                llm = self._llms[idx]
-                monitor = get_api_key_monitor()
-                monitor.record_groq_attempt(idx, operation="brain_structured", source="brain_service")
-                t0_llm = time.perf_counter()
-                
-                response = llm.invoke(messages)
-                
-                latency_ms = int((time.perf_counter() - t0_llm) * 1000)
-                monitor.record_groq_success(idx, operation="brain_structured", source="brain_service", latency_ms=latency_ms)
-                
-                text = (response.content or "").strip()
-                return (text, "llm")
-            
-            except Exception as e:
-                if 'monitor' in locals() and 'idx' in locals():
-                    latency = int((time.perf_counter() - t0_llm) * 1000) if 't0_llm' in locals() else 0
-                    is_rl = "429" in str(e) or "rate limit" in str(e).lower()
-                    monitor.record_groq_failure(idx, operation="brain_structured", source="brain_service", error=str(e), is_rate_limit=is_rl, latency_ms=latency)
-                logger.warning("[BRAIN-TASK] Structured LLM failed: %s. Using rule-based.", e)
-
-        msg = user_content.split("User:")[-1].strip()[:500] if "User:" in user_content else user_content[:500]
-        results = self._rule_based_task(msg)
-        fallback = ", ".join(results)
-        return (fallback, "rule-based")
-
-    def _parse_task_decisions(self, raw_response: str) -> List[Tuple[str, str]]:
-
-        if not raw_response:
-            return [("open", "")]
-
-        text = raw_response.replace("\n", ",").strip()
-
-        TASK_PREFIXES = [
-            "generate_image", "generate image",
-            "google_search", "google search",
-            "youtube_search", "youtube search",
-            "gmail_inbox", "gmail inbox",
-            "gmail_unread", "gmail unread",
-            "calendar_list", "calendar list",
-            "calendar_search", "calendar search",
-            "calendar_create", "calendar create",
-            "calendar_delete", "calendar delete",
-            "drive_search", "drive search",
-            "drive_upload", "drive upload",
-            "drive_list", "drive list",
-            "open_webcam", "close_webcam",
-            "content", "open", "close", "play",
-            "general", "realtime",
-        ]
-
-        NORMALIZE = {
-            "generate image": "generate_image",
-            "google search": "google_search",
-            "youtube search": "youtube_search",
-            "gmail inbox": "gmail_inbox",
-            "gmail unread": "gmail_unread",
-            "calendar list": "calendar_list",
-            "calendar search": "calendar_search",
-            "calendar create": "calendar_create",
-            "calendar delete": "calendar_delete",
-            "drive search": "drive_search",
-            "drive upload": "drive_upload",
-            "drive list": "drive_list",
-        }
-
-        decisions = []
-
-        parts = [p.strip() for p in text.split(",") if p.strip()]
-
-        for part in parts:
-            part_lower = part.lower().strip()
-            matched = False
-
-            for prefix in TASK_PREFIXES:
-                if part_lower.startswith(prefix):
-                    query = part[len(prefix):].strip().rstrip(".!?")
-                    task_type = NORMALIZE.get(prefix, prefix)
-
-                    if task_type in ("general", "realtime"):
-                        continue
-                    decisions.append((task_type, query))
-                    matched = True
-                    break
-
-            if not matched:
-                for prefix in TASK_PREFIXES:
-                    if prefix in part_lower:
-                        idx = part_lower.index(prefix)
-                        query = part[idx + len(prefix):].strip().rstrip(".!?")
-                        task_type = NORMALIZE.get(prefix, prefix)
-                        if task_type in ("general", "realtime"):
-                            continue
-                        decisions.append((task_type, query))
-                        matched = True
-                        break
-
-                if not matched:
-                    logger.warning("[BRAIN-TASK] Could not parse decision part: '%s'", part[:80])
-
-        return decisions if decisions else [("open", "")]
+    def _parse_single(self, text: str) -> str:
+        if not text:
+            return "general"
+        text = text.strip().lower()
+        # Reasoning models (gpt-oss, etc.) may wrap their chain-of-thought in
+        # <think>...</think> or emit a verbose explanation before the verdict.
+        # Focus on the CONCLUSION: drop everything up to the last </think>, then
+        # strip any remaining think blocks.
+        if "</think>" in text:
+            text = text.split("</think>")[-1]
+        text = re.sub(r"<think>.*?</think>", " ", text, flags=re.DOTALL)
+        cleaned = text.strip().strip(".:!?\"'`* \n\t")
+        # 1) Clean single-word answer (the common case once the model has room).
+        if cleaned in ALL_CATEGORIES:
+            return cleaned
+        # 2) Otherwise scan for category words (whole-word match so "general"
+        #    inside other text doesn't win) and prefer the one mentioned LAST —
+        #    a reasoning model states its final verdict at the end.
+        best_cat, best_pos = None, -1
+        for opt in ALL_CATEGORIES:
+            for m in re.finditer(r"\b" + re.escape(opt) + r"\b", text):
+                if m.start() > best_pos:
+                    best_pos, best_cat = m.start(), opt
+        if best_cat:
+            return best_cat
+        return "general"
 
     def _rule_based_primary(self, msg: str) -> str:
+        """Lightweight fallback used only if the classifier LLM is unavailable.
+        Deliberately simple — the agent loop is robust to the route anyway."""
         m = (msg or "").strip().lower()
-
-        if any(x in m for x in ["do you know my", "link of my website", "my website link", "what's my website", "know the link of my"]):
-            return "general"
 
         if m in ("hello", "hi", "hey", "good morning", "good evening", "good afternoon",
                  "how are you", "what's up", "thanks", "thank you", "bye", "goodbye"):
             return "general"
 
         if any(x in m for x in ["what do you see", "what can you see", "what am i holding",
-                                  "what is this", "describe this", "identify this",
-                                  "what's in my hand", "look at this", "read this",
-                                  "can you see", "check this out", "show you"]):
+                                "what is this", "describe this", "identify this",
+                                "what's in my hand", "look at this", "read this",
+                                "can you see", "check this out",
+                                "photo lo", "photo le", "take a selfie", "selfie",
+                                "capture this", "camera on", "open camera",
+                                "camera se", "meri photo", "click my photo"]):
             return "camera"
 
-        if any(x in m for x in ["open webcam", "turn on camera", "start camera",
-                                  "close webcam", "turn off camera", "stop camera"]):
-            return "task"
-
-        email_task_patterns = [
-            "check my inbox", "show my inbox", "open my inbox", "show unread",
-            "unread email", "unread mail", "latest email", "latest unread",
-            "recent emails", "recent email", "read my email", "read my unread email",
-            "check email", "check gmail", "gmail inbox", "mail inbox",
-            "aaj ka inbox", "unread message", "email padh", "mail padh",
-            "mail check kar", "email check kar", "mera inbox dikha", "inbox dikha",
-            "inbox bata", "gmail bata", "gmail check kar", "meri mail dikha",
-            "meri mails dikha", "new mail", "nayi mail", "koi nayi mail",
-            "mail aayi hai kya", "email aayi hai kya", "kis kis ki mail aayi",
+        action_signals = [
+            "open ", "close ", "launch ", "start ", "play ", "type ", "click ",
+            "screenshot", "volume", "brightness", "mute", "shut down", "shutdown",
+            "restart", "reboot", "sleep", "lock ", "write ", "draft ", "generate ",
+            "draw ", "create image", "picture of", "image of", "search ", "google ",
+            "youtube", "inbox", "unread", "email", "mail", "calendar", "event",
+            "drive", "delete ", "save ", "set ", "increase ", "decrease ", "press ",
+            "go to ", "visit ", "media", "next track", "pause", "minimize", "maximize",
         ]
-        if any(x in m for x in email_task_patterns):
+        if any(x in m for x in action_signals):
             return "task"
 
-        calendar_task_patterns = [
-            "calendar event", "calendar events", "my calendar", "my events today", "what are my events",
-            "today events", "today's events",
-            "upcoming event", "upcoming events", "aaj ke events", "aaj ke calendar",
-            "birthday event", "birthday reminder", "search calendar", "find event",
-            "find birthday", "create event", "add event", "schedule event", "set reminder",
-            "delete event", "remove event", "cancel event", "calendar me", "calendar mein",
-        ]
-        if any(x in m for x in calendar_task_patterns):
-            return "task"
-
-        drive_task_patterns = [
-            "search drive", "my drive", "google drive", "drive file", "drive files",
-            "drive folder", "drive folders", "list drive", "upload to drive",
-            "drive me", "drive mein", "drive pe", "find file in drive",
-        ]
-        if any(x in m for x in drive_task_patterns):
-            return "task"
-
-        task_patterns = [
-            "open ", "launch ", "go to ", "visit ",
-            "play ", "play the ", "play some ", "put on ",
-            "generate image", "generate an image", "draw ", "create image", "create an image",
-            "make me a picture", "make a picture", "picture of ", "image of ",
-            "write ", "draft ", "compose ", "essay", "poem", "letter",
-            "search for ", "look up ", "find me ", "google ",
-            "search youtube", "find videos",
-        ]
-
-        if any(m.startswith(p) or p in m for p in task_patterns):
-            return "task"
-
-        if any(x in m for x in ["who is ", "who are ", "latest", "current", "news", "weather", "today",
-                                  "recent", "stock price", "trending", "score", "tell me about ",
-                                  "what happened", "how much does", "price of", "cost of",
-                                  "reviews of", "best restaurants"]):
+        if any(x in m for x in ["who is ", "who are ", "latest", "current", "news", "weather",
+                                "today", "recent", "stock price", "trending", "score",
+                                "tell me about ", "what happened", "how much does",
+                                "price of", "cost of", "reviews of", "best restaurants"]):
             return "realtime"
 
         return "general"
-
-    def _rule_based_task(self, msg: str) -> List[str]:
-
-        m = (msg or "").strip().lower()
-        tasks = []
-
-        if any(x in m for x in ["open webcam", "turn on camera", "start camera", "show me the camera",
-                                  "open the webcam", "start the camera", "turn on the camera"]):
-            return ["open_webcam"]
-        if any(x in m for x in ["close webcam", "turn off camera", "stop camera",
-                                  "close the webcam", "stop the camera", "turn off the camera"]):
-            return ["close_webcam"]
-
-        if any(x in m for x in [
-            "unread email", "unread mail", "latest unread", "read my unread email",
-            "show unread", "kitne unread", "new emails", "new email", "unread message",
-            "nayi mail", "koi nayi mail", "mail aayi hai kya", "email aayi hai kya",
-            "kis kis ki mail aayi", "unread padh", "unread mail padh", "mail padh ke bata",
-        ]):
-            return ["gmail_unread"]
-
-        if any(x in m for x in [
-            "check my inbox", "show my inbox", "open my inbox", "recent emails",
-            "recent email", "latest email", "check email", "check gmail",
-            "gmail inbox", "mail inbox", "aaj ka inbox",
-            "mail check kar", "email check kar", "mera inbox dikha", "inbox dikha",
-            "inbox bata", "gmail check kar", "meri mail dikha", "meri mails dikha",
-        ]):
-            return ["gmail_inbox"]
-
-        if any(x in m for x in [
-            "today events", "today's events", "my events today", "calendar today",
-            "aaj ke events", "aaj ke calendar", "upcoming events", "upcoming calendar",
-            "next events", "calendar schedule", "what are my events",
-        ]):
-            return ["calendar_list"]
-
-        if any(x in m for x in [
-            "search calendar", "find event", "find birthday", "birthday event",
-            "birthday reminder", "calendar me", "calendar mein", "search my event",
-        ]):
-            return ["calendar_search"]
-
-        if any(x in m for x in [
-            "create event", "add event", "schedule event", "set reminder",
-            "create reminder", "add reminder", "schedule meeting", "create meeting",
-            "calendar reminder", "birthday reminder laga", "reminder laga",
-        ]):
-            return ["calendar_create"]
-
-        if any(x in m for x in [
-            "delete event", "remove event", "cancel event", "delete reminder",
-            "remove reminder", "delete meeting", "calendar se hata", "event hata",
-        ]):
-            return ["calendar_delete"]
-
-        if any(x in m for x in [
-            "search drive", "find file in drive", "search my drive", "drive me",
-            "drive mein", "google drive me", "google drive mein",
-        ]):
-            return ["drive_search"]
-
-        if any(x in m for x in [
-            "upload to drive", "drive pe upload", "upload file to drive", "drive upload",
-        ]) or ("upload" in m and "drive" in m):
-            return ["drive_upload"]
-
-        if any(x in m for x in [
-            "list drive", "drive files", "drive folders", "my drive files",
-            "show drive", "show my drive", "list files in", "list folders in",
-        ]):
-            return ["drive_list"]
-
-        if m.startswith(("open ", "launch ", "go to ", "visit ", "can you open ")) or \
-           ("open" in m and any(s in m for s in ["facebook", "youtube", "google", "netflix", "gmail", "instagram", "twitter", "linkedin"])):
-            tasks.append("open")
-
-        if m.startswith(("play ", "play the ", "play some ")) or " play " in m:
-            tasks.append("play")
-
-        if any(x in m for x in ["generate image", "draw ", "create image", "make me ", "picture of ", "image of "]):
-            tasks.append("generate_image")
-
-        if any(x in m for x in ["write ", "draft ", "compose ", "essay", "poem", "letter", "application "]):
-            tasks.append("content")
-
-        if "youtube" in m and any(x in m for x in ["search", "find"]):
-            tasks.append("youtube_search")
-
-        if any(x in m for x in ["search for ", "look up ", "find me ", "google "]) and "youtube" not in m:
-            tasks.append("google_search")
-
-        return tasks if tasks else ["open"]
-
-    SITE_MAP = {
-        "facebook": "https://www.facebook.com", "instagram": "https://www.instagram.com",
-        "youtube": "https://www.youtube.com", "google": "https://www.google.com",
-        "netflix": "https://www.netflix.com", "twitter": "https://twitter.com",
-        "x.com": "https://x.com", "gmail": "https://mail.google.com",
-        "whatsapp": "https://web.whatsapp.com", "linkedin": "https://www.linkedin.com",
-        "reddit": "https://www.reddit.com", "discord": "https://discord.com/app",
-        "spotify": "https://open.spotify.com", "tiktok": "https://www.tiktok.com",
-        "amazon": "https://www.amazon.com", "github": "https://github.com",
-        "wikipedia": "https://www.wikipedia.org", "stackoverflow": "https://stackoverflow.com",
-        "medium": "https://medium.com", "notion": "https://www.notion.so",
-        "figma": "https://www.figma.com", "canva": "https://www.canva.com",
-        "zoom": "https://zoom.us", "drive": "https://drive.google.com",
-        "maps": "https://www.google.com/maps",
-        "jarvis for everyone": "https://jarvisforeveryone.com",
-        "jarvisforeveryone": "https://jarvisforeveryone.com",
-        "jarvis4everyone": "https://jarvis4everyone.com",
-        "jarvis4everyone.com": "https://jarvis4everyone.com",
-        "my website": "https://jarvisforeveryone.com",
-        "jarvisforeveryone.com": "https://jarvisforeveryone.com",
-    }
-
-    def _strip_filler(self, msg: str) -> str:
-        cleaned = msg.strip()
-
-        cleaned = re.sub(
-            r'^(?:hello|hi|hey|yo|hiya|howdy|ok|okay|alright)\s+(?:jarvis|j\.?a\.?r\.?v\.?i\.?s\.?)\s*[,.]?\s*',
-            '', cleaned, flags=re.I
-        ).strip()
-
-        cleaned = re.sub(
-            r'^(?:hello|hi|hey|yo|hiya|howdy)\s*[,.]?\s*',
-            '', cleaned, flags=re.I
-        ).strip()
-
-        cleaned = re.sub(
-            r'^(?:jarvis|j\.?a\.?r\.?v\.?i\.?s\.?)\s*[,.]?\s*',
-            '', cleaned, flags=re.I
-        ).strip()
-
-        cleaned = re.sub(r'\s+(?:please|pls|plz)\s*[.!?]*$', '', cleaned, flags=re.I).strip()
-        cleaned = re.sub(r'\s+(?:for me|right now|now|asap)\s*[.!?]*$', '', cleaned, flags=re.I).strip()
-        return cleaned if cleaned else msg.strip()
-
-    def _extract_payload(self, task_type: str, message: str):
-
-        if task_type == "open":
-            urls = self._extract_urls(message)
-
-            if len(urls) <= 1:
-                return {"message": message, "raw": message, "url": urls[0] if urls else "https://www.google.com"}
-            
-            return [{"message": message, "raw": message, "url": u} for u in urls]
-        
-        if task_type == "open_webcam":
-            return {"message": message, "raw": message}
-        
-        if task_type == "close_webcam":
-            return {"message": message, "raw": message}
-
-        payload = {"message": message, "raw": message}
-
-        if task_type == "play":
-            payload["query"] = self._extract_play_query(message)
-
-        elif task_type == "generate_image":
-            payload["prompt"] = self._extract_image_prompt(message)
-
-        elif task_type == "content":
-            payload["prompt"] = self._extract_content_prompt(message)
-
-        elif task_type in ("google_search", "youtube_search"):
-            payload["query"] = self._extract_search_query(message)
-
-        elif task_type in (
-            "calendar_list", "calendar_search", "calendar_create", "calendar_delete",
-            "drive_search", "drive_list", "drive_upload",
-        ):
-            payload["query"] = self._extract_task_query(task_type, message)
-
-        return payload
-
-    def _extract_task_query(self, task_type: str, msg: str) -> str:
-        cleaned = self._strip_filler(msg)
-        patterns = {
-            "calendar_list": [
-                r"^(?:what are|show|list|tell me|check)\s+(?:my\s+)?(?:calendar\s+)?events?\s*(?:for\s+)?",
-                r"^(?:aaj ke|today(?:'s)?|upcoming|next)\s+(?:calendar\s+)?events?\s*",
-            ],
-            "calendar_search": [
-                r"^(?:search|find|look up)\s+(?:my\s+)?(?:calendar\s+)?(?:event|events|birthday|reminder)?\s*",
-                r"^(?:calendar\s+(?:me|mein)\s*)",
-            ],
-            "calendar_create": [
-                r"^(?:create|add|schedule|set|make)\s+(?:a\s+|an\s+)?(?:calendar\s+)?(?:event|reminder|meeting)?\s*",
-            ],
-            "calendar_delete": [
-                r"^(?:delete|remove|cancel)\s+(?:my\s+)?(?:calendar\s+)?(?:event|reminder|meeting)?\s*",
-            ],
-            "drive_search": [
-                r"^(?:search|find|look up)\s+(?:in\s+)?(?:my\s+)?(?:google\s+)?drive\s+(?:for\s+)?",
-                r"^(?:drive\s+(?:me|mein)\s*)",
-            ],
-            "drive_list": [
-                r"^(?:list|show|display|open)\s+(?:my\s+)?(?:google\s+)?drive\s+",
-                r"^(?:list|show)\s+(?:files|folders|items)\s+(?:in\s+)?",
-            ],
-            "drive_upload": [
-                r"^(?:upload|add)\s+",
-            ],
-        }
-        for pattern in patterns.get(task_type, []):
-            updated = re.sub(pattern, "", cleaned, flags=re.I).strip()
-            if updated and updated != cleaned:
-                cleaned = updated
-        return cleaned.strip().rstrip(".!?")
-
-    def _extract_urls(self, msg: str) -> list:
-
-        from urllib.parse import urlparse
-        msg_lower = msg.lower()
-        urls, seen = [], set()
-
-        def _add(u):
-            if not u or u in seen:
-                return
-            
-            u2 = u.strip().rstrip(".!?,")
-            if not u2.startswith("http"):
-                u2 = "https://" + u2
-
-            try:
-                p = urlparse(u2)
-                if p.scheme not in ("http", "https"):
-                    return
-                
-            except Exception:
-                return
-            
-            urls.append(u2)
-            seen.add(u2)
-
-        for m in re.finditer(r"https?://[^\s]+", msg, re.I):
-            _add(m.group(0))
-
-        for name, url in self.SITE_MAP.items():
-            if name in msg_lower:
-                _add(url)
-
-        if urls:
-            return urls
-        
-        for prefix in ["open ", "launch ", "go to ", "visit ", "can you open "]:
-
-            if prefix in msg_lower:
-                rest = msg_lower.split(prefix, 1)[-1].replace(" for me", "").strip().rstrip(".!?")
-
-                if rest:
-                    for p in re.split(r"\s+and\s+|\s*,\s*", rest):
-                        p = p.strip()
-
-                        if p in self.SITE_MAP:
-                            _add(self.SITE_MAP[p])
-
-                        elif p and "." in p:
-                            _add(p)
-
-                        elif p:
-                            _add("https://www." + p + ".com")
-
-                break
-
-        return urls if urls else ["https://www.google.com"]
-
-    def _extract_play_query(self, msg: str) -> str:
-
-        cleaned = self._strip_filler(msg)
-        lower = cleaned.lower()
-
-        m = re.search(r'^(.+?)\s+(?:can you|could you|please)\s+play\s+(?:that|it|this)\b', lower)
-
-        if m:
-            result = cleaned[:m.end(1)].strip().rstrip(".!?,")
-            if result:
-                return result
-
-        m = re.search(
-            r'(?:can you|could you|please)\s+play\s+(?:the\s+|a\s+|some\s+|me\s+)?(.+?)(?:\s+on\s+youtube|\s+for\s+me|\s+please\s*)?\s*[.!?]*$',
-            lower,
-        )
-
-        if m:
-            result = cleaned[m.start(1):m.end(1)].strip().rstrip(".!?,")
-            if result and result.lower() not in ("that", "it", "this", "something"):
-                return result
-
-        m = re.search(
-            r'play\s+(?:the\s+|a\s+|some\s+|me\s+)?(.+?)(?:\s+on\s+youtube|\s+for\s+me|\s+please\s*)?\s*[.!?]*$',
-            lower,
-        )
-        
-        if m:
-            result = cleaned[m.start(1):m.end(1)].strip().rstrip(".!?,")
-            if result and result.lower() not in ("that", "it", "this", "something"):
-                return result
-
-        for p in ["play ", "play the ", "play some ", "play a "]:
-            if lower.startswith(p):
-                return cleaned[len(p):].strip().rstrip(".!?")
-
-        return cleaned.strip()
-
-    def _extract_image_prompt(self, msg: str) -> str:
-
-        m, lower = msg.strip(), msg.lower()
-        extracted = None
-
-        for p in ["generate ", "draw ", "create ", "make me ", "make a ", "picture of ", "image of ", "generator image of "]:
-            if lower.startswith(p):
-                extracted = m[len(p):].strip().rstrip(".!?")
-                break
-
-            if p in lower:
-                extracted = m[lower.find(p) + len(p):].strip().rstrip(".!?")
-                break
-
-        if not extracted:
-            return m
-        
-        boundaries = [
-            r"\s+and\s+write\s", r"\s+and\s+open\s", r"\s+and\s+generate\s",
-            r"\s+and\s+draw\s", r"\s+and\s+play\s", r"\s+and\s+search\s",
-            r"\s+and\s+launch\s", r"\s+and\s+go\s+to\s", r"\s+and\s+visit\s",
-        ]
-
-        for b in boundaries:
-            match = re.search(b, extracted.lower(), re.I)
-
-            if match:
-                extracted = extracted[:match.start()].strip().rstrip(".!?,")
-                break
-
-        return extracted.strip() if extracted.strip() else m
-
-    def _extract_search_query(self, msg: str) -> str:
-
-        cleaned = self._strip_filler(msg)
-        lower = cleaned.lower()
-
-        for p in ["search youtube for ", "search youtube ", "youtube search for ",
-                   "search on youtube for ", "search on youtube ",
-                   "search google for ", "search on google for ", "search on google ",
-                   "search for ", "look up ", "find me ", "find ",
-                   "google search for ", "google search ", "google "]:
-            
-            if p in lower:
-                rest = cleaned[lower.find(p) + len(p):].strip().rstrip(".!?")
-                return rest if rest else cleaned.strip()
-
-        m = re.search(
-            r'(?:can you|could you|please)\s+search\s+(?:for\s+)?(.+?)(?:\s+on\s+(?:youtube|google)|\s+for\s+me|\s+please\s*)?\s*[.!?]*$',
-            lower,
-        )
-
-        if m:
-            result = cleaned[m.start(1):m.end(1)].strip().rstrip(".!?,")
-            if result:
-                return result
-
-        m = re.search(r'^(.+?)\s+on\s+(?:youtube|google)\s*[.!?]*$', lower)
-
-        if m:
-            result = cleaned[:m.end(1)].strip().rstrip(".!?,")
-
-            if result:
-                result2 = re.sub(
-                    r'^(?:can you |could you |please )?(?:play|search|find|look up)\s+(?:the\s+|a\s+|some\s+|me\s+)?',
-                    '', result, flags=re.I
-                ).strip()
-                return result2 if result2 else result
-
-        stripped = re.sub(
-            r'^(?:can you |could you |please )?(?:play|search|find|look up)\s+(?:the\s+|a\s+|some\s+|me\s+)?',
-            '', lower, flags=re.I
-        ).strip()
-
-        stripped = re.sub(r'\s+on\s+(?:youtube|google)\s*[.!?]*$', '', stripped, flags=re.I).strip()
-        stripped = re.sub(r'\s+(?:for me|please)\s*[.!?]*$', '', stripped, flags=re.I).strip()
-
-        if stripped and stripped != lower:
-            return stripped.rstrip(".!?,")
-        return cleaned.strip()
-
-    def _extract_content_prompt(self, msg: str) -> str:
-
-        m, lower = msg.strip(), msg.lower()
-        boundaries = [
-            r"\s+and\s+open\s", r"\s+and\s+generate\s", r"\s+and\s+draw\s",
-            r"\s+and\s+play\s", r"\s+and\s+search\s", r"\s+and\s+launch\s",
-            r"\s+and\s+go\s+to\s", r"\s+and\s+visit\s",
-        ]
-
-        triggers = [
-            "write application", "write an application", "write a application",
-            "write a letter", "write letter", "draft a letter", "draft letter",
-            "write an essay", "write essay", "write a poem", "write poem",
-            "write a song", "write song", "compose a", "write the following",
-            "write ", "draft ", "compose ",
-        ]
-
-        best_start = -1
-        best_trigger = ""
-
-        for t in triggers:
-            pos = lower.find(t)
-            if pos >= 0 and (best_start < 0 or pos < best_start):
-                best_start = pos
-                best_trigger = t
-
-        if best_start < 0:
-            return m
-        
-        segment = m[best_start:].strip()
-        segment_lower = segment.lower()
-
-        for b in boundaries:
-            match = re.search(b, segment_lower, re.I)
-
-            if match:
-                segment = segment[:match.start()].strip().rstrip(".!?,")
-                break
-            
-        segment = segment.rstrip(".!?,").strip()
-        return segment if segment else m
