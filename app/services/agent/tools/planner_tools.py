@@ -41,6 +41,7 @@ logger = logging.getLogger("J.A.R.V.I.S")
         },
     },
     category="system",
+    dangerous=True,
 )
 def do_multistep(goal: str, confirm: bool = False) -> str:
     goal = (goal or "").strip()
@@ -48,7 +49,13 @@ def do_multistep(goal: str, confirm: bool = False) -> str:
         return "ERROR: empty goal."
     try:
         from app.services.agent.planner import get_phase5
-        result = get_phase5().run(goal, confirmed=bool(confirm))
+        from app.services.agent.execution import trusted_confirmation_for
+        # Never trust an LLM-generated boolean as user consent. The shared
+        # coordinator sets this scope only while executing the exact action the
+        # user approved through ChatService.
+        result = get_phase5().run(
+            goal, confirmed=trusted_confirmation_for("do_multistep")
+        )
     except Exception as e:  # noqa: BLE001
         logger.warning("[PHASE5] do_multistep failed: %s", " ".join(str(e).split())[:80])
         return "ERROR: multi-step planner unavailable; handle the steps individually."

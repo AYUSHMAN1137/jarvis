@@ -14,6 +14,7 @@ Thread-local so concurrent requests never mix their actions.
 from __future__ import annotations
 
 import threading
+import uuid
 from typing import Any, Dict, List, Optional
 
 _local = threading.local()
@@ -36,6 +37,7 @@ def _new_bucket() -> Dict[str, List[Any]]:
         "googlesearches": [],
         "youtubesearches": [],
         "cam": None,
+        "_meta": {},
     }
 
 
@@ -70,6 +72,18 @@ def add_content(text: str) -> None:
 
 def set_cam(payload: Optional[dict]) -> None:
     _bucket()["cam"] = payload
+
+
+def attach_dispatch(execution_id: str, action_id: str) -> None:
+    """Attach correlation data to browser-bound actions for acknowledgement."""
+    b = _bucket()
+    if not has_actions():
+        return
+    b["_meta"] = {
+        "dispatch_id": uuid.uuid4().hex,
+        "execution_id": str(execution_id or ""),
+        "action_id": str(action_id or ""),
+    }
 
 
 def collect() -> Dict[str, Any]:

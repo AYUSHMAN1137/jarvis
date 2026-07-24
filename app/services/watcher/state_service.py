@@ -170,8 +170,8 @@ class SystemStateWatcher:
                 if not bool(getattr(_cfg, "PHASE7_ENABLED", True)):
                     self._emit_ready = False
                     return
-                from app.services.agent.phase7.events import diff_state
-                from app.services.agent.phase4.event_bus import get_event_bus
+                from app.services.agent.proactive.events import diff_state
+                from app.services.agent.checker.event_bus import get_event_bus
                 self._diff_fn = diff_state
                 self._bus = get_event_bus()
                 self._emit_ready = bool(self._bus is not None)

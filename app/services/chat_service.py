@@ -15,6 +15,7 @@ from app.services.brain_service import BrainService
 from app.services.vision_service import VisionService
 from app.services.agent.agent_loop import AgentLoop
 from app.utils.key_rotation import get_next_key_pair
+from app.services.debug_logger import dbg
 
 logger = logging.getLogger("J.A.R.V.I.S")
 
@@ -274,6 +275,12 @@ class ChatService:
         self, session_id: str, user_message: str, imgbase64: Optional[str] = None
     ) -> Iterator[Union[str, Dict[str, Any]]]:
         t0_jarvis = time.perf_counter()
+        turn_id = uuid.uuid4().hex
+        dbg.session_start(session_id=session_id, user_message=user_message)
+        dbg.info("TURN", "START", {
+            "turn_id": turn_id[:12], "session_id": session_id[:12],
+            "has_image": bool(imgbase64),
+        })
         logger.info("[JARVIS-STREAM] Session: %s | User: %.200s | img: %s",
                     session_id[:12], user_message[:80], "yes" if imgbase64 else "no")
         self.add_message(session_id, "user", user_message)
@@ -293,19 +300,14 @@ class ChatService:
         # ---- direct camera bypass (frontend attached an image) ----
         if imgbase64 and CAMERA_BYPASS_TOKEN in (user_message or ""):
             yield from self._handle_camera_with_image(session_id, user_message, imgbase64)
+            dbg.session_end(final_response=self.sessions[session_id][-1].content)
             return
 
         # ---- confirmation reply for a pending dangerous action ----
         pending = self._pending_confirmations.get(session_id)
         if pending and self._is_affirmative(user_message):
-            yield from self._run_agent(
-                session_id,
-                pending["original_message"],
-                chat_history,
-                confirmed_tools=[pending["tool"]],
-                t0_jarvis=t0_jarvis,
-            )
             self._pending_confirmations.pop(session_id, None)
+            yield from self._run_confirmed_action(session_id, pending, t0_jarvis)
             return
         elif pending:
             # Any non-affirmative reply cancels the pending action.
@@ -318,6 +320,10 @@ class ChatService:
             category, primary_method, primary_elapsed_ms = self.brain_service.classify_primary(
                 user_message, chat_history, key_index=brain_idx if brain_idx is not None else 0
             )
+        dbg.info("ROUTE", "CLASSIFIED", {
+            "turn_id": turn_id[:12], "category": category,
+            "method": primary_method, "elapsed_ms": primary_elapsed_ms,
+        })
         yield {"_activity": {"event": "decision", "query_type": category,
                              "reasoning": primary_method.capitalize(), "elapsed_ms": primary_elapsed_ms}}
 
@@ -329,6 +335,7 @@ class ChatService:
         # ---- camera (no image yet) ----
         if category == CATEGORY_CAMERA:
             yield from self._handle_camera_route(session_id, user_message, imgbase64)
+            dbg.session_end(final_response=self.sessions[session_id][-1].content)
             return
 
         # ---- task / mixed -> agent loop ----
@@ -342,6 +349,7 @@ class ChatService:
         use_realtime = category == CATEGORY_REALTIME and self.realtime_service
         route_name = "realtime" if use_realtime else "general"
         yield {"_activity": {"event": "routing", "route": route_name}}
+        dbg.info("ROUTE", "CONVERSATION STREAM", {"route": route_name})
         yield {"_activity": {"event": "streaming_started", "route": route_name}}
         stream_svc = self.realtime_service if use_realtime else self.groq_service
         chunk_count = 0
@@ -364,6 +372,12 @@ class ChatService:
                 yield chunk
         finally:
             self.save_chat_session(session_id)
+            final_content = self.sessions[session_id][-1].content
+            dbg.info("STREAM", "COMPLETED", {
+                "route": route_name, "chunks": chunk_count,
+                "characters": len(final_content),
+            })
+            dbg.session_end(final_response=final_content)
         # One-line timing breakdown so it's obvious where the wait was:
         # classify (brain) + first-token (model latency / search) + total.
         logger.info(
@@ -373,6 +387,51 @@ class ChatService:
         )
 
     # ---- agent loop runner ----
+    def _run_confirmed_action(self, session_id: str, pending: dict,
+                              t0_jarvis: float) -> Iterator[Union[str, Dict[str, Any]]]:
+        """Execute exactly the tool+arguments the user saw and approved.
+
+        Never reruns the LLM after confirmation, so approval cannot silently
+        drift to different arguments or authorize another action of the same
+        tool type.
+        """
+        from app.services.agent import action_sink
+        from app.services.agent.execution import ExecutionContext, get_execution_coordinator
+        tool = str(pending.get("tool") or "")
+        args = dict(pending.get("arguments") or {})
+        execution_id = uuid.uuid4().hex
+        coordinator = get_execution_coordinator()
+        context = ExecutionContext(
+            execution_id=execution_id, session_id=session_id,
+            user_message=str(pending.get("original_message") or ""),
+            source="confirmed_action",
+        )
+        action = coordinator.action(tool, args, index=1,
+                                    action_id=str(pending.get("action_id") or uuid.uuid4().hex))
+        yield {"_activity": {"event": "confirmation_granted", "tool": tool}}
+        yield {"_activity": {"event": "execution_started", "execution_id": execution_id[:12]}}
+        yield {"_activity": {"event": "tool_call", "tool": tool, "args": args, "step": 1}}
+        action_sink.reset()
+        manifest = coordinator.execute_plan(context, [action], confirmation_already_checked=True)
+        result = manifest.results[0]
+        yield {"_activity": {"event": "tool_result", "tool": tool,
+                              "ok": result.transport_ok,
+                              "preview": result.observation[:120]}}
+        if result.transport_ok and action_sink.has_actions():
+            actions = dict(_EMPTY_ACTIONS)
+            actions.update(action_sink.collect())
+            yield {"_actions": actions}
+        yield {"_activity": {"event": "verification_queued",
+                              "execution_id": execution_id[:12], "actions": 1}}
+        yield {"_activity": {"event": "agent_done", "steps": 1}}
+        text = "Done." if result.transport_ok else "I couldn't complete the approved action."
+        self.sessions[session_id][-1].content = text
+        yield text
+        self.save_chat_session(session_id)
+        dbg.session_end(final_response=text)
+        logger.info("[TIMING] route=task(confirmed) | total=%.2fs",
+                    time.perf_counter() - t0_jarvis)
+
     def _run_agent(
         self,
         session_id: str,
@@ -390,6 +449,9 @@ class ChatService:
             self.save_chat_session(session_id)
             return
 
+        # The turn log is opened by process_jarvis_message_stream for every route.
+        dbg.info("CHAT_SERVICE", f"_run_agent called | session={session_id[:12]} | mixed={mixed} | confirmed={confirmed_tools}")
+
         # ---- deterministic fast-path for explicit web commands ----
         # LLM tool-calling is unreliable for simple mechanical commands, so handle
         # the unambiguous ones (open <site> / play <x> / search <x>) directly:
@@ -400,27 +462,54 @@ class ChatService:
             from app.services.agent.tool_registry import registry
             cmd = try_direct_web_command(user_message)
             if cmd:
+                execution_id = uuid.uuid4().hex
                 logger.info("[FAST-PATH] %.60s -> %s(%s)", user_message, cmd["tool"], cmd["args"])
+                dbg.fast_path(matched=True, tool=cmd["tool"], args=cmd["args"])
+                dbg.execution_event("started", execution_id, {
+                    "path": "direct", "tool": cmd["tool"],
+                })
                 yield {"_activity": {"event": "routing", "route": "task"}}
+                yield {"_activity": {"event": "fast_path", "tool": cmd["tool"]}}
+                yield {"_activity": {"event": "execution_started",
+                                      "execution_id": execution_id[:12]}}
                 yield {"_activity": {"event": "tool_call", "tool": cmd["tool"], "args": cmd["args"], "step": 1}}
                 action_sink.reset()
-                observation = registry.execute(cmd["tool"], cmd["args"])
-                try:
-                    from app.services.memory_service import get_memory
-                    get_memory().record_action(cmd["tool"], cmd["args"], not str(observation).startswith("ERROR"))
-                except Exception:
-                    pass
-                ok = not str(observation).startswith("ERROR")
+                from app.services.agent.execution import ExecutionContext, get_execution_coordinator
+                direct_coordinator = get_execution_coordinator()
+                direct_context = ExecutionContext(
+                    execution_id=execution_id, session_id=session_id,
+                    user_message=user_message, source="direct",
+                )
+                direct_manifest = direct_coordinator.execute_plan(
+                    direct_context,
+                    [direct_coordinator.action(cmd["tool"], cmd["args"], index=1)],
+                    confirmation_already_checked=True,
+                )
+                direct_result = direct_manifest.results[0]
+                observation = direct_result.observation
+                ok = direct_result.transport_ok
                 yield {"_activity": {"event": "tool_result", "tool": cmd["tool"], "ok": ok, "preview": str(observation)[:120]}}
                 if ok and action_sink.has_actions():
                     actions = dict(_EMPTY_ACTIONS)
                     actions.update(action_sink.collect())
                     yield {"_actions": actions}
+                    yield {"_activity": {"event": "actions_emitted",
+                                          "message": "Browser action sent"}}
+                    dbg.info("FRONTEND", "ACTIONS EMITTED", {
+                        "tool": cmd["tool"], "has_actions": True,
+                    })
+                dbg.execution_event("completed", execution_id, {
+                    "path": "direct", "tool": cmd["tool"], "ok": ok,
+                })
+                yield {"_activity": {"event": "execution_completed",
+                                      "execution_id": execution_id[:12], "ok": ok,
+                                      "path": "direct"}}
                 yield {"_activity": {"event": "agent_done", "steps": 1}}
                 say = cmd["say"] if ok else "Sorry Sir, I couldn't do that."
                 self.sessions[session_id][-1].content = say
                 yield say
                 self.save_chat_session(session_id)
+                dbg.session_end(final_response=say)
                 logger.info("[TIMING] route=task(fast) | total=%.2fs", time.perf_counter() - t0_jarvis)
                 return
 
@@ -433,11 +522,13 @@ class ChatService:
         if not mixed and not confirmed_tools:
             cached = None
             try:
-                from app.services.agent.phase6.coordinator import get_phase6
+                from app.services.agent.cache.coordinator import get_phase6
                 _p6 = get_phase6()
                 cached = _p6.lookup(user_message)
             except Exception:
                 cached = None
+            if cached is None:
+                yield {"_activity": {"event": "cache_miss"}}
             if cached and cached.get("kind") == "tool":
                 from app.services.agent import action_sink
                 from app.services.agent.tool_registry import registry
@@ -448,20 +539,28 @@ class ChatService:
                     logger.info("[CACHE-HIT] %.60s -> %s(%s)", user_message, ctool, cargs)
                     yield {"_activity": {"event": "routing", "route": "task"}}
                     yield {"_activity": {"event": "cache_hit", "tool": ctool}}
+                    yield {"_activity": {"event": "cache_replay", "kind": "tool",
+                                          "steps": 1}}
                     yield {"_activity": {"event": "tool_call", "tool": ctool, "args": cargs, "step": 1}}
                     action_sink.reset()
-                    observation = registry.execute(ctool, cargs)
-                    ok = not str(observation).startswith("ERROR")
-                    try:
-                        from app.services.memory_service import get_memory
-                        get_memory().record_action(ctool, cargs, ok)
-                    except Exception:
-                        pass
-                    try:
-                        from app.services.agent.phase4.coordinator import get_phase4
-                        get_phase4().publish_action_done(ctool, cargs, observation, user_message)
-                    except Exception:
-                        pass
+                    from app.services.agent.execution import ExecutionContext, get_execution_coordinator
+                    replay_execution_id = uuid.uuid4().hex
+                    replay_coordinator = get_execution_coordinator()
+                    replay_context = ExecutionContext(
+                        execution_id=replay_execution_id, session_id=session_id,
+                        user_message=user_message, source="cache_tool",
+                    )
+                    replay_manifest = replay_coordinator.execute_plan(
+                        replay_context,
+                        [replay_coordinator.action(ctool, cargs, index=1)],
+                        confirmation_already_checked=True,
+                    )
+                    replay_result = replay_manifest.results[0]
+                    observation = replay_result.observation
+                    ok = replay_result.transport_ok
+                    yield {"_activity": {"event": "verification_queued",
+                                          "execution_id": replay_execution_id[:12],
+                                          "actions": 1}}
                     yield {"_activity": {"event": "tool_result", "tool": ctool, "ok": ok, "preview": str(observation)[:120]}}
                     if ok and action_sink.has_actions():
                         actions = dict(_EMPTY_ACTIONS)
@@ -477,7 +576,83 @@ class ChatService:
                     self.sessions[session_id][-1].content = say
                     yield say
                     self.save_chat_session(session_id)
+                    dbg.session_end(final_response=say)
                     logger.info("[TIMING] route=task(cache) | total=%.2fs", time.perf_counter() - t0_jarvis)
+                    return
+            elif cached and cached.get("kind") == "plan":
+                from app.services.agent import action_sink
+                from app.services.agent.tool_registry import registry
+                steps = (cached.get("payload") or {}).get("steps") or []
+                safe_steps = [s for s in steps if isinstance(s, dict) and s.get("tool")]
+                if (safe_steps and len(safe_steps) == len(steps)
+                        and not any(registry.is_dangerous(s.get("tool")) for s in safe_steps)):
+                    replay_execution_id = uuid.uuid4().hex
+                    replay_manifest = []
+                    replay_ok = True
+                    action_sink.reset()
+                    from app.services.agent.execution import (
+                        ExecutionContext, ExecutionManifest, get_execution_coordinator,
+                    )
+                    plan_coordinator = get_execution_coordinator()
+                    plan_context = ExecutionContext(
+                        execution_id=replay_execution_id, session_id=session_id,
+                        user_message=user_message, source="cache_plan",
+                    )
+                    plan_actions = []
+                    plan_results = []
+                    yield {"_activity": {"event": "routing", "route": "task"}}
+                    yield {"_activity": {"event": "cache_hit", "kind": "plan",
+                                          "steps": len(safe_steps)}}
+                    yield {"_activity": {"event": "cache_replay", "kind": "plan",
+                                          "steps": len(safe_steps)}}
+                    for index, cached_step in enumerate(safe_steps, start=1):
+                        ctool = cached_step.get("tool")
+                        cargs = cached_step.get("args") or {}
+                        action_id = uuid.uuid4().hex
+                        replay_manifest.append({"action_id": action_id, "tool": ctool, "args": cargs})
+                        yield {"_activity": {"event": "tool_call", "tool": ctool,
+                                              "args": cargs, "step": index}}
+                        action_spec = plan_coordinator.action(
+                            ctool, cargs, index=index, action_id=action_id
+                        )
+                        action_result = plan_coordinator.execute_action(
+                            plan_context, action_spec, confirmation_already_checked=True
+                        )
+                        plan_actions.append(action_spec)
+                        plan_results.append(action_result)
+                        observation = action_result.observation
+                        step_ok = action_result.transport_ok
+                        replay_ok = replay_ok and step_ok
+                        yield {"_activity": {"event": "tool_result", "tool": ctool,
+                                              "ok": step_ok, "preview": str(observation)[:120]}}
+                        if not step_ok:
+                            break
+                    plan_coordinator.complete(ExecutionManifest(
+                        context=plan_context, actions=plan_actions, results=plan_results,
+                        status="completed" if replay_ok else "failed",
+                    ))
+                    yield {"_activity": {"event": "verification_queued",
+                                          "execution_id": replay_execution_id[:12],
+                                          "actions": len(replay_manifest)}}
+                    if replay_ok and action_sink.has_actions():
+                        actions = dict(_EMPTY_ACTIONS)
+                        actions.update(action_sink.collect())
+                        yield {"_actions": actions}
+                    if not replay_ok:
+                        try:
+                            _p6.invalidate(user_message)
+                        except Exception:
+                            pass
+                    yield {"_activity": {"event": "agent_done",
+                                          "steps": len(replay_manifest)}}
+                    say = ((cached.get("payload") or {}).get("say")
+                           or ("Done." if replay_ok else "I couldn't complete the cached workflow."))
+                    self.sessions[session_id][-1].content = say
+                    yield say
+                    self.save_chat_session(session_id)
+                    dbg.session_end(final_response=say)
+                    logger.info("[TIMING] route=task(cache-plan) | total=%.2fs",
+                                time.perf_counter() - t0_jarvis)
                     return
             elif cached and cached.get("kind") == "response":
                 say = (cached.get("payload") or {}).get("say")
@@ -488,6 +663,7 @@ class ChatService:
                     self.sessions[session_id][-1].content = say
                     yield say
                     self.save_chat_session(session_id)
+                    dbg.session_end(final_response=say)
                     logger.info("[TIMING] route=chat(cache) | total=%.2fs", time.perf_counter() - t0_jarvis)
                     return
 
@@ -503,6 +679,8 @@ class ChatService:
                     confirm = event["_confirm"]
                     self._pending_confirmations[session_id] = {
                         "tool": confirm["tool"],
+                        "arguments": dict(confirm.get("arguments") or {}),
+                        "action_id": uuid.uuid4().hex,
                         "original_message": confirm["original_message"],
                     }
                     ask = (f"This will run a sensitive action ({confirm['tool']}). "
@@ -511,6 +689,7 @@ class ChatService:
                     yield {"_activity": {"event": "awaiting_confirmation", "tool": confirm["tool"]}}
                     yield ask
                     self.save_chat_session(session_id)
+                    dbg.session_end(final_response=ask)
                     logger.info("[JARVIS-STREAM] Awaiting confirmation for %s", confirm["tool"])
                     return
                 if "_actions" in event:
@@ -608,7 +787,11 @@ class ChatService:
 
     # ===================== startup briefing ===================== #
     def process_startup_brief_stream(self, session_id: str) -> Iterator[Union[str, Dict[str, Any]]]:
+        dbg.session_start(session_id=session_id, user_message="(daily startup brief)")
+        dbg.info("STARTUP_BRIEF", "START", {"session_id": session_id[:12]})
         if not self.realtime_service:
+            dbg.error("STARTUP_BRIEF", "Realtime service is not initialized")
+            dbg.session_end(final_response="")
             raise ValueError("Realtime service is not initialized.")
         logger.info("[STARTUP-STREAM] Session: %s", session_id[:12])
         # ---- Daily cache: generate the brief once per day, then replay it ----
@@ -624,6 +807,10 @@ class ChatService:
             for i in range(0, len(cached_text), 80):
                 yield cached_text[i:i + 80]
             self.save_chat_session(session_id)
+            dbg.info("STARTUP_BRIEF", "CACHE HIT", {
+                "date": today, "characters": len(cached_text),
+            })
+            dbg.session_end(final_response=cached_text)
             logger.info("[STARTUP-STREAM] Completed (cached) | chars: %d", len(cached_text))
             return
         email_line = self._get_startup_email_line()
@@ -662,6 +849,11 @@ class ChatService:
                 self.sessions[session_id][-1].content += chunk
                 chunk_count += 1
                 yield chunk
+        except Exception as e:
+            dbg.error("STARTUP_BRIEF", "Generation failed", {
+                "error": str(e), "chunks_received": chunk_count,
+            })
+            raise
         finally:
             # Cache the freshly generated brief for the rest of the day.
             if chunk_count > 0:
@@ -670,6 +862,12 @@ class ChatService:
                     "text": self.sessions[session_id][-1].content,
                 }
             self.save_chat_session(session_id)
+            final_brief = self.sessions[session_id][-1].content
+            dbg.info("STARTUP_BRIEF", "FINISH", {
+                "chunks": chunk_count, "characters": len(final_brief),
+                "saved_empty": not bool(final_brief.strip()),
+            })
+            dbg.session_end(final_response=final_brief)
             logger.info("[STARTUP-STREAM] Completed | Chunks: %d", chunk_count)
 
     # ===================== persistence ===================== #

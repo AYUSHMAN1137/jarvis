@@ -1,6 +1,40 @@
+# Secrets and local credentials
 .env
 credentials.json
+database/google_token.json
+data/google_token.json
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+
+# Runtime state, caches, and user data
 database/
+*.db-wal
+*.db-shm
+
+# Build and coverage output
+build/
+dist/
+coverage/
+htmlcov/

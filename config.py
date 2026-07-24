@@ -8,14 +8,14 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).parent
 load_dotenv(BASE_DIR / ".env")
 
-LEARNING_DATA_DIR = BASE_DIR / "database" / "learning_data"
-CHATS_DATA_DIR = BASE_DIR / "database" / "chats_data"
-VECTOR_STORE_DIR = BASE_DIR / "database" / "vector_store"
-CAMERA_CAPTURES_DIR = BASE_DIR / "database" / "camera_captures"
-VOICE_CACHE_DIR = BASE_DIR / "database" / "voice_cache"
+LEARNING_DATA_DIR = BASE_DIR / "data" / "learning_data"
+CHATS_DATA_DIR = BASE_DIR / "data" / "chats_data"
+VECTOR_STORE_DIR = BASE_DIR / "data" / "vector_store"
+CAMERA_CAPTURES_DIR = BASE_DIR / "data" / "camera_captures"
+VOICE_CACHE_DIR = BASE_DIR / "data" / "voice_cache"
 GOOGLE_CREDENTIALS_PATH = Path(os.getenv("GOOGLE_CREDENTIALS_FILE", str(BASE_DIR / "credentials.json")))
-GOOGLE_TOKEN_PATH = Path(os.getenv("GOOGLE_TOKEN_FILE", str(BASE_DIR / "database" / "google_token.json")))
-LEGACY_GMAIL_TOKEN_PATH = BASE_DIR / "database" / "gmail_token.json"
+GOOGLE_TOKEN_PATH = Path(os.getenv("GOOGLE_TOKEN_FILE", str(BASE_DIR / "data" / "google_token.json")))
+LEGACY_GMAIL_TOKEN_PATH = BASE_DIR / "data" / "gmail_token.json"
 GMAIL_CREDENTIALS_PATH = GOOGLE_CREDENTIALS_PATH
 GMAIL_TOKEN_PATH = GOOGLE_TOKEN_PATH
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
@@ -280,8 +280,8 @@ LENGTH: 1-2 sentences for simple questions. Only longer when asked.
 
 # === Persistent Memory (Master Plan Phase 2: session + permanent SQLite) ===
 # Local, fail-soft long-term memory store. See app/services/memory_service.py.
-MEMORY_DIR = BASE_DIR / "database" / "memory"
-MEMORY_DB_PATH = BASE_DIR / "database" / "memory.db"
+MEMORY_DIR = BASE_DIR / "data" / "memory"
+MEMORY_DB_PATH = BASE_DIR / "data" / "memory.db"
 USER_PROFILE_PATH = MEMORY_DIR / "user_profile.md"
 JARVIS_PERSONA_PATH = MEMORY_DIR / "jarvis_persona.md"
 MEMORY_ENABLED = _env_bool("MEMORY_ENABLED", True)
@@ -295,7 +295,7 @@ MEMORY_DIR.mkdir(parents=True, exist_ok=True)
 # All background + fail-soft. PHASE4_ENABLED=False => behaves exactly like Phase 3.
 PHASE4_ENABLED = _env_bool("PHASE4_ENABLED", True)
 # Verified skills + success observations persist here (the event bus is transient).
-SKILLS_DB_PATH = BASE_DIR / "database" / "skills.db"
+SKILLS_DB_PATH = BASE_DIR / "data" / "skills.db"
 # "N baar repeat" fluke-guard: a verified success must repeat at least this many
 # times before it crystallizes into a reusable skill.
 SKILL_MIN_REPEATS = int(os.getenv("SKILL_MIN_REPEATS", "3"))
@@ -304,6 +304,11 @@ CHECKER_VISION_ENABLED = _env_bool("CHECKER_VISION_ENABLED", True)
 # Seconds to wait before re-reading watcher state (a freshly opened/closed window
 # needs a moment to appear/disappear; the watcher polls ~2s).
 CHECKER_SETTLE_SECONDS = float(os.getenv("CHECKER_SETTLE_SECONDS", "1.5"))
+CHECKER_SETTLE_PROFILES = {
+    "instant": (0.0, 0.1, 0.5), "ui": (0.4, 0.25, 2.0),
+    "process": (0.6, 0.35, 3.0), "radio": (1.2, 0.5, 5.0),
+    "network": (1.5, 0.75, 7.0), "external": (0.5, 0.5, 4.0),
+}
 # Learner: max silent auto-retries for SAFE, idempotent actions before it stops
 # and reports honestly (never an infinite loop, never a fake "done").
 LEARNER_MAX_RETRIES = int(os.getenv("LEARNER_MAX_RETRIES", "2"))
@@ -318,11 +323,12 @@ GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", GEMINI_MODEL)
 # speed #2. Nothing is hardcoded; every entry is learned from a verified run.
 PHASE6_ENABLED = _env_bool("PHASE6_ENABLED", True)
 # Resolved verified command -> action mapping (L1 exact + L4 static response).
-COMMAND_CACHE_DB_PATH = BASE_DIR / "database" / "command_cache.db"
+COMMAND_CACHE_DB_PATH = BASE_DIR / "data" / "command_cache.db"
 # Soft cap on active cache entries; least-recently-used rows are evicted.
 CACHE_MAX_ENTRIES = int(os.getenv("CACHE_MAX_ENTRIES", "500"))
 # L2 semantic cache reuses the existing FAISS vector store (no new heavy dep).
 CACHE_SEMANTIC_ENABLED = _env_bool("CACHE_SEMANTIC_ENABLED", True)
+CACHE_SEMANTIC_AUTO_EXECUTE = _env_bool("CACHE_SEMANTIC_AUTO_EXECUTE", False)
 # Cosine-similarity floor for a semantic cache hit (high => only near-identical).
 CACHE_SEMANTIC_THRESHOLD = float(os.getenv("CACHE_SEMANTIC_THRESHOLD", "0.93"))
 
@@ -335,13 +341,19 @@ PROACTIVE_AUTO_ACT = _env_bool("PROACTIVE_AUTO_ACT", False)
 # Min seconds between two suggestions so JARVIS never nags.
 PROACTIVE_MIN_INTERVAL_SECONDS = int(os.getenv("PROACTIVE_MIN_INTERVAL_SECONDS", "45"))
 # Consent + suggestion audit log lives here.
-PROACTIVE_DB_PATH = BASE_DIR / "database" / "proactive.db"
+PROACTIVE_DB_PATH = BASE_DIR / "data" / "proactive.db"
 
 # === Phase 8: Personalization (habits + facts, always visible + forgettable) ===
 # Learns habits/aliases/facts to personalize replies, cache priority and
 # proactive suggestions. Everything is visible to the user and can be forgotten.
 PHASE8_ENABLED = _env_bool("PHASE8_ENABLED", True)
-USER_MODEL_DB_PATH = BASE_DIR / "database" / "user_model.db"
+
+# Privacy: clipboard previews stay in watcher RAM for explicit clipboard tools,
+# but are not placed in LLM prompts unless the owner deliberately opts in.
+CONTEXT_INCLUDE_CLIPBOARD_IN_PROMPT = _env_bool(
+    "CONTEXT_INCLUDE_CLIPBOARD_IN_PROMPT", False
+)
+USER_MODEL_DB_PATH = BASE_DIR / "data" / "user_model.db"
 # A habit must be observed at least this many times before it is trusted.
 HABIT_MIN_OBSERVATIONS = int(os.getenv("HABIT_MIN_OBSERVATIONS", "3"))
 

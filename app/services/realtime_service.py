@@ -92,7 +92,7 @@ class RealtimeGroqService(GroqService):
             return env_location
 
         try:
-            learning_dir = Path(__file__).resolve().parents[2] / "database" / "learning_data"
+            learning_dir = Path(__file__).resolve().parents[2] / "data" / "learning_data"
             if not learning_dir.exists():
                 return ""
             patterns = [

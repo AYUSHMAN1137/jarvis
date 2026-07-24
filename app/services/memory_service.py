@@ -23,7 +23,7 @@ What it stores
                     etc.) so later phases can resolve "usko band karo".
   3. corrections -- "nahi, aise nahi" -> remembered so the same mistake is not
                     repeated (Master Plan add-on: Correction memory).
-  4. profile md  -- database/memory/user_profile.md + jarvis_persona.md, small
+  4. profile md  -- data/memory/user_profile.md + jarvis_persona.md, small
                     human-readable files injected into every prompt.
 
 Recall
@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import sqlite3
 import threading
@@ -122,6 +123,31 @@ class MemoryService:
                 ok INTEGER DEFAULT 1,
                 created_at TEXT NOT NULL)"""
         )
+        # Add execution correlation without destroying existing user data.
+        existing = {r[1] for r in c.execute("PRAGMA table_info(actions)").fetchall()}
+        missing = {name for name in (
+            "execution_id", "action_id", "verification_verdict",
+            "verification_source", "context_key"
+        ) if name not in existing}
+        if missing:
+            try:
+                backup_path = str(MEMORY_DB_PATH) + ".pre-v2.bak"
+                if str(MEMORY_DB_PATH) != ":memory:" and not os.path.exists(backup_path):
+                    backup_conn = sqlite3.connect(backup_path)
+                    c.backup(backup_conn)
+                    backup_conn.close()
+                    logger.info("[MEMORY] pre-migration backup created: %s", backup_path)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[MEMORY] pre-migration backup failed; migration continues additively: %s", e)
+        for column, sql_type in (
+            ("execution_id", "TEXT"), ("action_id", "TEXT"),
+            ("verification_verdict", "TEXT"), ("verification_source", "TEXT"),
+            ("context_key", "TEXT"),
+        ):
+            if column not in existing:
+                c.execute(f"ALTER TABLE actions ADD COLUMN {column} {sql_type}")
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_actions_action_id "
+                  "ON actions(action_id) WHERE action_id IS NOT NULL AND action_id != ''")
         c.execute(
             """CREATE TABLE IF NOT EXISTS corrections(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -282,7 +308,9 @@ class MemoryService:
             logger.warning("[MEMORY] remember failed: %s", e)
             return "I couldn't save that to memory."
 
-    def record_action(self, tool: str, args, ok: bool = True) -> None:
+    def record_action(self, tool: str, args, ok: bool = True,
+                      execution_id: str = "", action_id: str = "",
+                      context_key: str = "") -> None:
         if not self.enabled or not self._conn:
             return
         try:
@@ -294,10 +322,22 @@ class MemoryService:
             now = self._now()
             with self._lock:
                 c = self._conn
-                cur = c.execute(
-                    "INSERT INTO actions(tool, target, args, ok, created_at) VALUES(?,?,?,?,?)",
-                    (str(tool), target, args_json, 1 if ok else 0, now),
-                )
+                if action_id:
+                    cur = c.execute(
+                        "INSERT OR IGNORE INTO actions(tool,target,args,ok,created_at,execution_id,action_id,context_key) "
+                        "VALUES(?,?,?,?,?,?,?,?)",
+                        (str(tool), target, args_json, 1 if ok else 0, now,
+                         execution_id or "", action_id, context_key or ""),
+                    )
+                    if cur.rowcount == 0:
+                        return
+                else:
+                    cur = c.execute(
+                        "INSERT INTO actions(tool,target,args,ok,created_at,execution_id,action_id,context_key) "
+                        "VALUES(?,?,?,?,?,?,?,?)",
+                        (str(tool), target, args_json, 1 if ok else 0, now,
+                         execution_id or "", None, context_key or ""),
+                    )
                 aid = cur.lastrowid
                 text = f"used {tool}" + (f" on {target}" if target else "")
                 self._fts_index("action", aid, text)
@@ -315,6 +355,20 @@ class MemoryService:
                 c.commit()
         except Exception as e:  # noqa: BLE001
             logger.debug("[MEMORY] record_action failed: %s", e)
+
+    def update_action_verification(self, action_id: str, verdict: str,
+                                   source: str = "") -> None:
+        if not self.enabled or not self._conn or not action_id:
+            return
+        try:
+            with self._lock:
+                self._conn.execute(
+                    "UPDATE actions SET verification_verdict=?, verification_source=? "
+                    "WHERE action_id=?", (str(verdict), str(source), str(action_id))
+                )
+                self._conn.commit()
+        except Exception as e:  # noqa: BLE001
+            logger.debug("[MEMORY] verification update failed: %s", e)
 
     def record_correction(self, wrong, right, context: str = "") -> str:
         if not self.enabled or not self._conn:

@@ -50,7 +50,7 @@ class Phase5Coordinator:
         if self.started:
             return
         try:
-            from app.services.agent.phase4.event_bus import get_event_bus
+            from app.services.agent.checker.event_bus import get_event_bus
             # Reuse the bus Phase 4 created; if Phase 4 is off this still works.
             self.bus = get_event_bus()
             self.bus.subscribe("plan.started", self._on_plan_started)
@@ -78,7 +78,7 @@ class Phase5Coordinator:
     def _verify_fn(self):
         """Borrow the Phase 4 checker (watcher-first + vision fallback)."""
         try:
-            from app.services.agent.phase4 import get_phase4
+            from app.services.agent.checker import get_phase4
             p4 = get_phase4()
             if getattr(p4, "checker", None) is not None:
                 return p4.checker.verify_live

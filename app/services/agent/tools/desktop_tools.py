@@ -19,6 +19,7 @@ import time
 from typing import Optional
 
 from app.services.agent.tool_registry import tool
+from app.services.debug_logger import dbg
 
 logger = logging.getLogger("J.A.R.V.I.S")
 
@@ -188,6 +189,7 @@ def open_application(app_name: str) -> str:
     name = (app_name or "").strip().lower()
     if not name:
         return "ERROR: no app name given."
+    dbg.uia_action("open_application", name)
     # Resolve what to actually launch:
     #   1) a known alias (notepad -> notepad, vs code -> code, ...)
     #   2) else a Start Menu shortcut whose name matches -- covers apps installed
@@ -335,6 +337,7 @@ def type_text(text: str, press_enter: bool = False) -> str:
         if press_enter:
             pyautogui.press("enter")
         logger.info("[DESKTOP] Typed %d chars (enter=%s)", len(str(text)), press_enter)
+        dbg.uia_action("type_text", text[:80], result=f"enter={press_enter}", ok=True)
         return f"Typed the text{' and pressed Enter' if press_enter else ''}."
     except Exception as e:  # noqa: BLE001
         return f"ERROR: typing failed: {e}"
@@ -374,6 +377,7 @@ def press_hotkey(keys: str) -> str:
         else:
             pyautogui.hotkey(*parts)
         logger.info("[DESKTOP] Pressed hotkey: %s", combo)
+        dbg.uia_action("press_hotkey", combo, ok=True)
         return f"Pressed {combo}."
     except Exception as e:  # noqa: BLE001
         return f"ERROR: hotkey '{keys}' failed: {e}"
@@ -416,6 +420,7 @@ def mouse_click(x: Optional[int] = None, y: Optional[int] = None, button: str = 
                 pyautogui.click(button="right" if button == "right" else "left")
             where = "at the current position"
         logger.info("[DESKTOP] Mouse %s click %s", button, where)
+        dbg.uia_action("mouse_click", where, result=f"button={button}", ok=True)
         return f"Performed a {button} click {where}."
     except Exception as e:  # noqa: BLE001
         return f"ERROR: mouse click failed: {e}"

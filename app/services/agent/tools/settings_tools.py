@@ -19,9 +19,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import subprocess
+import time
 from typing import Optional
 
 from app.services.agent.tool_registry import tool
+from app.services.agent.automation import get_uia_engine
 
 logger = logging.getLogger("J.A.R.V.I.S")
 
@@ -488,3 +490,69 @@ def airplane_mode(action: str = "on") -> str:
             "security > Radios ('Let apps control radios')."
         )
     return f"I couldn't change airplane mode ({outcome})."
+
+
+# --------------------------------------------------------------------------- #
+# Windows Update -- dedicated tool so the agent doesn't need a 3-step chain
+# --------------------------------------------------------------------------- #
+@tool(
+    name="check_for_updates",
+    description=(
+        "Check for Windows updates. Opens the Windows Update settings page and "
+        "clicks the 'Check for updates' button automatically. Use this when the "
+        "user says 'check for updates', 'update my PC', 'download updates', "
+        "'windows update', etc."
+    ),
+    params={},
+    category="system",
+)
+def check_for_updates() -> str:
+    """Open Windows Update settings and click 'Check for updates' via UIA."""
+    # Step 1: Open the Windows Update page directly (deep link).
+    try:
+        subprocess.Popen(
+            ["cmd", "/c", "start", "ms-settings:windowsupdate"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return f"ERROR: Could not open Windows Update settings: {exc}"
+
+    # Step 2: Give the Settings page time to fully render.
+    time.sleep(2.5)
+
+    # Step 3: Click the 'Check for updates' button via UI Automation.
+    eng = get_uia_engine()
+
+    # Try the most common button names (varies by Windows version/locale).
+    button_names = [
+        "Check for updates",
+        "Check for Updates",
+        "Download",
+        "Download and install",
+    ]
+    for btn_name in button_names:
+        res = eng.click(btn_name, window="Settings")
+        if res.get("ok"):
+            evidence = res.get("evidence") or f"Clicked '{btn_name}'."
+            return f"Windows Update page opened and I clicked '{btn_name}'. {evidence}"
+
+    # If none of the known names worked, list what IS visible so the LLM
+    # can decide the next step (e.g. updates already up-to-date, or the
+    # button has a different label on this Windows build).
+    listing = eng.list_controls(window="Settings")
+    if listing.get("ok"):
+        controls = listing.get("controls") or []
+        names = [c.get("name") for c in controls[:15] if c.get("name")]
+        if names:
+            return (
+                "I opened Windows Update settings but couldn't find a "
+                f"'Check for updates' button. Visible controls: {', '.join(names)}. "
+                "The system may already be up to date."
+            )
+
+    return (
+        "I opened the Windows Update settings page, but I couldn't find or "
+        "click the 'Check for updates' button. The page may still be loading "
+        "or your Windows version uses a different layout."
+    )

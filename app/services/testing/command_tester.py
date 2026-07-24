@@ -160,7 +160,7 @@ class CommandTester:
         if self._subscribed:
             return
         try:
-            from app.services.agent.phase4.event_bus import get_event_bus
+            from app.services.agent.checker.event_bus import get_event_bus
             bus = get_event_bus()
             bus.subscribe("verified", lambda p: self._collect("verified", p))
             bus.subscribe("action.done", lambda p: self._collect("action.done", p))
@@ -642,7 +642,7 @@ class CommandTester:
         }
         # Phase 8 -- user model: fold in this session's observations, then read.
         try:
-            from app.services.agent.phase8 import get_phase8
+            from app.services.agent.personalization import get_phase8
             p8 = get_phase8()
             try:
                 p8.aggregate_from_provider()
@@ -656,7 +656,7 @@ class CommandTester:
             pass
         # Phase 7 -- proactive engine.
         try:
-            from app.services.agent.phase7 import get_phase7
+            from app.services.agent.proactive import get_phase7
             p7 = get_phase7()
             try:
                 roll["pending_suggestions"] = len(p7.get_pending(50) or [])

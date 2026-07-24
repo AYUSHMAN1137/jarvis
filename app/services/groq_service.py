@@ -434,7 +434,7 @@ class GroqService:
         # Phase 8 personalization: append learned facts/aliases/habits so the
         # agent's answers reflect what JARVIS knows about this user. Fail-soft.
         try:
-            from app.services.agent.phase8 import get_phase8
+            from app.services.agent.personalization import get_phase8
             system_message = get_phase8().augment(system_message)
         except Exception as _p8aug:  # noqa: BLE001
             logger.debug("[MEMORY] Phase 8 augment skipped: %s", _p8aug)

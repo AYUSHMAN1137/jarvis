@@ -27,7 +27,7 @@ class ApiKeyMonitor:
         self._lock = threading.Lock()
         self._started_at = _utc_now_iso()
         self._events = deque(maxlen=300)
-        self._state_path = Path(__file__).resolve().parents[2] / "database" / "monitor_state.json"
+        self._state_path = Path(__file__).resolve().parents[2] / "data" / "monitor_state.json"
         self._persist_interval_seconds = 2.0
         self._last_persist_at = 0.0
 

@@ -554,8 +554,8 @@ class ContextRegistry:
                              candidates=cands, question=question)
 
     # ---- prompt block ---- #
-    def format_state_block(self, max_chars: int = 700) -> str:
-        """Compact live-state block for the agent system prompt."""
+    def format_state_block(self, max_chars: int = 700, query: str = "") -> str:
+        """Compact, relevance-filtered, prompt-safe live-state block."""
         if not self._entities:
             return ""
         lines: List[str] = []
@@ -565,9 +565,18 @@ class ContextRegistry:
                  or next((e for e in self._entities if e.is_focus), None))
         if focus:
             lines.append(f"[Active window] {focus.label}")
+        query_tokens = set(_tokens(query))
         apps = [e for e in self._entities if e.type == "app"]
         apps.sort(key=lambda e: e.opened_at or e.last_seen, reverse=True)
         if apps:
+            if query_tokens:
+                relevant = [e for e in apps if query_tokens.intersection(_tokens(e.label))]
+                focused = [e for e in apps if e.is_focus]
+                selected = []
+                for e in relevant + focused + apps[:2]:
+                    if e not in selected:
+                        selected.append(e)
+                apps = selected
             shown = []
             for a in apps[:6]:
                 pids = a.handle.get("pids") or []
@@ -577,12 +586,25 @@ class ContextRegistry:
         if settings:
             lines.append("[Toggles] " + ", ".join(
                 f"{e.label}={e.handle.get('value')}" for e in settings[:6]))
+        # Clipboard data can contain passwords, tokens, private messages, or
+        # customer data. Keep it available to explicit clipboard tools, but do
+        # not inject it into a general LLM prompt unless the owner opts in.
+        try:
+            import config as _cfg
+            include_clipboard = bool(getattr(
+                _cfg, "CONTEXT_INCLUDE_CLIPBOARD_IN_PROMPT", False
+            ))
+        except Exception:  # noqa: BLE001
+            include_clipboard = False
         clip = next((e for e in self._entities if e.type == "clipboard"), None)
-        if clip:
+        if clip and include_clipboard:
             text = str(clip.handle.get("text") or "")[:60]
             lines.append(f'[Clipboard] "{text}"')
         results = [e for e in self._entities if e.type in ("tool_result", "file", "url")
                    and e.source == "tool_result"]
+        if query_tokens:
+            matched = [e for e in results if query_tokens.intersection(_tokens(e.label))]
+            results = matched or results[:2]
         results.sort(key=lambda e: (e.order, -e.last_seen))
         if results:
             shown = [f"{i + 1}. {r.label[:50]}" for i, r in enumerate(results[:5])]

@@ -18,6 +18,8 @@ Design goals:
 from __future__ import annotations
 
 import inspect
+import hashlib
+import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
@@ -71,6 +73,8 @@ class ToolSpec:
     # If True, the result is a frontend "action" (e.g. open a URL in the
     # browser) rather than something executed on the server itself.
     category: str = "desktop"  # desktop | system | web | google | content
+    risk_level: str = "safe"
+    verification: Dict[str, Any] = field(default_factory=dict)
 
     def to_openai_schema(self) -> Dict[str, Any]:
         """Return the tool definition in OpenAI/Groq `tools` format."""
@@ -126,6 +130,53 @@ class ToolRegistry:
         """All tool schemas for sending to the LLM."""
         return [spec.to_openai_schema() for spec in self._tools.values()]
 
+    def validate_arguments(self, name: str, arguments: Dict[str, Any]) -> List[str]:
+        """Validate required fields, enums, and basic JSON types generically."""
+        spec = self._tools.get(name)
+        if spec is None:
+            return [f"unknown tool '{name}'"]
+        values = arguments or {}
+        if not isinstance(values, dict):
+            return ["arguments must be an object"]
+        errors: List[str] = []
+        py_types = {
+            "string": str, "str": str, "int": int, "integer": int,
+            "float": (int, float), "number": (int, float),
+            "bool": bool, "boolean": bool, "list": list, "array": list,
+            "object": dict, "dict": dict,
+        }
+        for param in spec.params:
+            if param.required and param.name not in values:
+                errors.append(f"missing required argument '{param.name}'")
+                continue
+            if param.name not in values:
+                continue
+            value = values[param.name]
+            expected = py_types.get(param.type.lower())
+            # bool is an int subclass; do not accept it for numeric fields.
+            if expected and (isinstance(value, bool) and param.type.lower() not in ("bool", "boolean")):
+                errors.append(f"'{param.name}' has wrong type")
+            elif expected and not isinstance(value, expected):
+                errors.append(f"'{param.name}' has wrong type")
+            if param.enum and value not in param.enum:
+                errors.append(f"'{param.name}' is not an allowed value")
+        return errors
+
+    def schema_fingerprint(self, name: str) -> str:
+        """Stable fingerprint used to invalidate stale learned executions."""
+        spec = self._tools.get(name)
+        if spec is None:
+            return ""
+        payload = {
+            "name": spec.name, "dangerous": spec.dangerous,
+            "risk_level": spec.risk_level, "category": spec.category,
+            "verification": spec.verification,
+            "params": [{"name": p.name, "type": p.type, "required": p.required,
+                        "enum": p.enum} for p in spec.params],
+        }
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
     # ---- execution ----------------------------------------------------- #
     def execute(self, name: str, arguments: Dict[str, Any]) -> str:
         """Run a tool by name with the given arguments. Always returns a
@@ -169,6 +220,8 @@ def tool(
     params: Optional[Dict[str, Any]] = None,
     dangerous: bool = False,
     category: str = "desktop",
+    risk_level: Optional[str] = None,
+    verification: Optional[Dict[str, Any]] = None,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator to register a function as an LLM-callable tool.
 
@@ -209,6 +262,8 @@ def tool(
                 params=tool_params,
                 dangerous=dangerous,
                 category=category,
+                risk_level=(risk_level or ("dangerous" if dangerous else "safe")),
+                verification=dict(verification or {}),
             )
         )
         return func

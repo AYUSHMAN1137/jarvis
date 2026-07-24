@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
@@ -45,21 +46,54 @@ from app.services.agent.tool_registry import registry
 from app.services.agent import action_sink
 from app.services import llm_providers
 from app.services.api_key_monitor import get_api_key_monitor
+from app.services.debug_logger import dbg
 
 logger = logging.getLogger("J.A.R.V.I.S")
 
 _AGENT_SYSTEM_PROMPT = """You are J.A.R.V.I.S, an AI assistant that controls the user's Windows computer and browser through tools.
 
-You decide which tools to call to fulfil the user's request. You may call several tools, one after another, to complete multi-step tasks (for example: open an app, then type into it; or open a website, then interact with it).
+You decide which tools to call to fulfil the user's request. You may call several tools, one after another, to complete multi-step tasks.
 
 Rules:
 - Use tools to perform any real action. Do not pretend an action happened.
-- For desktop apps (notepad, calculator, chrome, etc.) use open_application. For web addresses use open_website.
+- For desktop apps (notepad, calculator, chrome, settings, etc.) use open_application. For web addresses use open_website.
 - After a tool returns, read its result. If it starts with "ERROR", adapt: try a different tool or fix the arguments. Do not repeat the exact same failing call.
 - When a step needs a window to be focused before typing, focus it first.
-- Keep going until the user's request is fully done, then give a short, natural, spoken-style final reply (1-2 sentences). No markdown, no emojis.
+- Keep going until the user's request is FULLY done, then give a short, natural, spoken-style final reply (1-2 sentences). No markdown, no emojis.
 - If the request is impossible with the available tools, say so briefly and honestly.
-- Be efficient: don't call tools that aren't needed."""
+- Be efficient: don't call tools that aren't needed.
+
+UI INTERACTION — CRITICAL:
+Opening an app or window is only step 1. If the user wants you to DO something inside that window (click a button, toggle a switch, type text, check a status), you MUST continue with the ui_* tools:
+
+  1. open_application(...) to open the window.
+  2. ui_list_controls(window_title) to discover the buttons, toggles, and text fields inside it. This returns a list of control names and types.
+  3. ui_click(control_name, window_title) to click a button or menu item by its visible label.
+  4. ui_set_toggle(control_name, state, window_title) to turn a toggle/switch on or off.
+  5. ui_type_into(control_name, text, window_title) to type into a text field.
+
+Important details:
+- The control_name is the visible text label of the button or control, e.g. "Check for updates", "Add a device", "On/Off toggle".
+- If ui_click fails, call ui_list_controls again to see the exact names available, then retry with the correct name.
+- Windows Settings pages take 1-2 seconds to load after opening. If ui_list_controls returns few or no controls, wait a moment and try again.
+- NEVER stop after just opening a window if the user asked you to interact with something inside it. The task is not done until the button is clicked or the action inside the window is completed.
+- For Windows Settings deep links, you can open specific pages directly: open_application("ms-settings:windowsupdate"), open_application("ms-settings:bluetooth"), open_application("ms-settings:network-wifi"), etc.
+
+BROWSER / WEB PAGE INTERACTION:
+When you open a web page (YouTube search, any website), the page loads in the user's browser. To interact with it:
+  1. Call play_on_youtube(query) or open_website(url) to open the page.
+  2. Wait ~3 seconds for the page to load.
+  3. Call ui_list_controls(window="Chrome") to see all clickable links and buttons on the page.
+  4. Find the right element (e.g. the first video title for YouTube) and call ui_click(element_name, window="Chrome").
+  5. If the browser is not Chrome, try "Edge", "Firefox", "Brave", or "Opera" as the window name.
+
+Example — "play Arijit Singh on YouTube":
+  Step 1: play_on_youtube("Arijit Singh") → opens search results page
+  Step 2: ui_list_controls(window="Chrome") → sees video links like "Tum Hi Ho - Arijit Singh", "Channa Mereya", etc.
+  Step 3: ui_click("Tum Hi Ho - Arijit Singh", window="Chrome") → video starts playing
+  Step 4: Reply "Playing Tum Hi Ho by Arijit Singh on YouTube, Sir."
+
+This same pattern works for ANY web interaction — clicking buttons, filling forms, navigating pages. Always: open → list controls → click."""
 
 
 @dataclass
@@ -308,7 +342,8 @@ class AgentLoop:
             ],
         }
 
-    def _build_state_block(self, chat_history: Optional[List[tuple]]) -> str:
+    def _build_state_block(self, user_message: str,
+                           chat_history: Optional[List[tuple]]) -> str:
         """Phase 3: compact live system-state block for the agent prompt.
 
         Combines Watcher state (active window, open apps, clipboard, toggles),
@@ -356,10 +391,10 @@ class AgentLoop:
             )
             self._registry = reg  # expose for tools (Phase 3 resolve)
             set_active_registry(reg)  # thread-local handoff to desktop tools
-            block = reg.format_state_block()
+            block = reg.format_state_block(query=user_message)
             # Phase 4: append last verification verdict + any honest learner note.
             try:
-                from app.services.agent.phase4 import get_phase4
+                from app.services.agent.checker import get_phase4
                 note = get_phase4().state_note()
                 if note:
                     block = (block + "\n" + note) if block else note
@@ -376,8 +411,9 @@ class AgentLoop:
         messages: List[Dict[str, Any]] = [{"role": "system", "content": _AGENT_SYSTEM_PROMPT}]
         # Phase 3: inject the live system-state block (if available) so the
         # tool-calling brain is no longer blind to what's actually on screen.
-        state_block = self._build_state_block(chat_history)
+        state_block = self._build_state_block(user_message, chat_history)
         if state_block:
+            dbg.state_block(state_block)
             messages.append({"role": "system", "content": state_block})
         for u, a in (chat_history or [])[-6:]:
             messages.append({"role": "user", "content": str(u)})
@@ -403,16 +439,37 @@ class AgentLoop:
         confirmed = set(confirmed_tools or [])
         messages = self._build_messages(user_message, chat_history)
         tool_result_order = 0  # Phase 3: ordinal sequence for tool results
+        execution_id = uuid.uuid4().hex
+        executed_steps: List[Dict[str, Any]] = []
+        execution_ok = True
+        from app.services.agent.execution import (
+            ExecutionContext, ExecutionManifest, get_execution_coordinator,
+        )
+        execution_context = ExecutionContext(
+            execution_id=execution_id, user_message=user_message, source="agent"
+        )
+        execution_actions = []
+        execution_results = []
+        execution_coordinator = get_execution_coordinator()
+
+        # --- DEBUG LOGGER: agent loop is running (session already started by chat_service) ---
+        dbg.ensure_session(session_id="agent_direct", user_message=user_message)
+        dbg.info("AGENT", f"run_stream started | max_steps={AGENT_MAX_STEPS} | tools={len(registry.names())}")
+        dbg.execution_event("started", execution_id, {"command": user_message[:200]})
 
         yield {"_activity": {"event": "agent_started", "tools": len(registry.names())}}
+        yield {"_activity": {"event": "execution_started",
+                             "execution_id": execution_id[:12]}}
 
         final_text = ""
         last_provider_sig = None
         for step in range(1, AGENT_MAX_STEPS + 1):
             try:
+                dbg.llm_call("gemini/groq", "auto", step=step)
                 completion = self._chat_completion(messages, key_index)
             except Exception as e:  # noqa: BLE001
                 logger.error("[AGENT] LLM call failed: %s", e)
+                dbg.error("AGENT", f"LLM call failed at step {step}: {e}")
                 final_text = "I ran into a problem reaching my reasoning engine. Please try again."
                 break
 
@@ -430,7 +487,13 @@ class AgentLoop:
 
             if not tool_calls:
                 final_text = (message.content or "").strip() or "Done."
+                dbg.llm_response("llm", has_tool_calls=False, step=step)
+                dbg.info("AGENT", f"Final answer: {final_text[:200]}")
                 break
+
+            # Log what the LLM decided to call
+            tool_names = [tc[1] for tc in tool_calls]
+            dbg.llm_response("llm", has_tool_calls=True, tool_names=tool_names, step=step)
 
             # Append the assistant's tool-call message before adding results.
             messages.append(self._assistant_msg_with_calls(message))
@@ -451,33 +514,34 @@ class AgentLoop:
                     return
 
                 yield {"_activity": {"event": "tool_call", "tool": name, "args": args, "step": step}}
-                observation = registry.execute(name, args)
-                try:
-                    from app.services.memory_service import get_memory
-                    get_memory().record_action(name, args, not str(observation).startswith("ERROR"))
-                except Exception:
-                    pass
-                # Phase 4: publish action.done (non-blocking, fail-soft) so the
-                # background Checker can verify the result. NEVER blocks the loop.
-                try:
-                    from app.services.agent.phase4 import get_phase4
-                    get_phase4().publish_action_done(
-                        tool=name, args=args, observation=observation,
-                        user_message=user_message,
-                    )
-                except Exception:
-                    pass
+                action_id = str(call_id or uuid.uuid4().hex)
+                action_spec = execution_coordinator.action(
+                    name, args, index=len(execution_actions) + 1, action_id=action_id
+                )
+                action_result = execution_coordinator.execute_action(
+                    execution_context, action_spec, confirmation_already_checked=True
+                )
+                execution_actions.append(action_spec)
+                execution_results.append(action_result)
+                observation = action_result.observation
+                obs_ok = action_result.transport_ok
+                executed_steps.append({
+                    "action_id": action_id,
+                    "tool": name,
+                    "args": dict(args or {}),
+                })
+                execution_ok = execution_ok and obs_ok
                 # Phase 3: feed successful results back into the live registry so
                 # later steps can resolve "pehla wala / jo abhi nikla". Fail-soft.
                 try:
-                    if self._registry is not None and not str(observation).startswith("ERROR"):
+                    if self._registry is not None and obs_ok:
                         tool_result_order += 1
                         self._registry.add_tool_result(name, observation, order=tool_result_order)
                 except Exception:
                     pass
                 yield {"_activity": {"event": "tool_result",
                                      "tool": name,
-                                     "ok": not observation.startswith("ERROR"),
+                                     "ok": obs_ok,
                                      "preview": observation[:120]}}
                 messages.append({
                     "role": "tool",
@@ -497,5 +561,23 @@ class AgentLoop:
         if action_sink.has_actions():
             yield {"_actions": action_sink.collect()}
 
+        # Cache learning happens at execution level, never from an isolated tool
+        # event. Verification is asynchronous, so Phase 6 joins this manifest to
+        # the individual verdicts by execution_id/action_id.
+        if executed_steps:
+            try:
+                manifest = ExecutionManifest(
+                    context=execution_context, actions=execution_actions,
+                    results=execution_results,
+                    status="completed" if execution_ok else "failed",
+                )
+                execution_coordinator.complete(manifest)
+                yield {"_activity": {"event": "verification_queued",
+                                     "execution_id": execution_id[:12],
+                                     "actions": len(executed_steps)}}
+            except Exception:
+                pass
+
+        dbg.session_end(final_response=final_text)
         yield {"_activity": {"event": "agent_done", "steps": step}}
         yield {"_final": final_text}

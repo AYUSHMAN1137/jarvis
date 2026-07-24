@@ -175,13 +175,31 @@ class UIAEngine:
         if not self.available():
             return self._unavailable("list")
         b = self._get_backend()
-        try:
-            controls = list(
-                b.find(name=None, window=window, control_type=control_type,
-                       timeout=self._timeout) or []
-            )
-        except Exception as e:  # noqa: BLE001
-            return {"ok": False, "action": "list", "reason": f"list failed: {_clean(e)}"}
+        # Use a thread timeout so heavy windows (Chrome) don't hang forever
+        result_holder: list = []
+        error_holder: list = []
+
+        def _do_find():
+            try:
+                result_holder.append(
+                    b.find(name=None, window=window, control_type=control_type,
+                           timeout=self._timeout) or []
+                )
+            except Exception as e:  # noqa: BLE001
+                error_holder.append(e)
+
+        t = threading.Thread(target=_do_find, daemon=True)
+        t.start()
+        t.join(timeout=10.0)  # max 10s for enumeration
+
+        if t.is_alive():
+            logger.warning("[UIA] list_controls TIMED OUT (10s) window=%s", _clean(window))
+            return {"ok": False, "action": "list",
+                    "reason": f"list_controls timed out (10s) -- window '{_clean(window)}' has too many controls. Try a more specific control_type or use ui_click directly."}
+        if error_holder:
+            return {"ok": False, "action": "list", "reason": f"list failed: {_clean(error_holder[0])}"}
+
+        controls = list(result_holder[0]) if result_holder else []
         items = []
         for c in controls[: max(1, int(limit))]:
             items.append({
@@ -363,23 +381,69 @@ class _PywinautoBackend:
     def available(self) -> bool:
         return True
 
-    def _window(self, window: Optional[str]):
+    def _resolve_window(self, window: Optional[str]):
+        """Return a resolved pywinauto window *wrapper* (not a WindowSpecification).
+
+        WindowSpecification is a lazy search object -- calling .descendants()
+        on it fails in pywinauto 0.6.x.  We must call .wrapper_object() first
+        to get the real HwndWrapper / UIAWrapper that supports .descendants().
+        """
         if window:
-            return self._desktop.window(title_re=f"(?i).*{re.escape(window)}.*")
-        # No window hint -> use the foreground/active window.
+            # Try exact-ish title_re match first.
+            try:
+                spec = self._desktop.window(title_re=f"(?i).*{re.escape(window)}.*")
+                spec.wait("exists", timeout=4)
+                return spec.wrapper_object()
+            except Exception:  # noqa: BLE001
+                pass
+            # Fallback: iterate all top-level windows and match by substring.
+            try:
+                low = window.lower()
+                for w in self._desktop.windows():
+                    try:
+                        wr = w.wrapper_object()
+                        title = (wr.window_text() or "").lower()
+                        if low in title:
+                            return wr
+                    except Exception:  # noqa: BLE001
+                        continue
+            except Exception:  # noqa: BLE001
+                pass
+            return None  # window not found
+
+        # No window hint -> use the foreground / active window.
         try:
-            from pywinauto import findwindows  # noqa: F401
-            active = self._desktop.window(active_only=True)
-            return active
+            spec = self._desktop.window(active_only=True)
+            spec.wait("exists", timeout=2)
+            return spec.wrapper_object()
         except Exception:  # noqa: BLE001
-            return self._desktop
+            pass
+        # Last resort: first visible top-level window.
+        try:
+            for w in self._desktop.windows():
+                try:
+                    wr = w.wrapper_object()
+                    if wr.is_visible():
+                        return wr
+                except Exception:  # noqa: BLE001
+                    continue
+        except Exception:  # noqa: BLE001
+            pass
+        return None
 
     def find(self, name=None, window=None, control_type=None, timeout=5.0):
-        win = self._window(window)
+        win = self._resolve_window(window)
+        if win is None:
+            # Window not found -- return empty so the engine reports honestly.
+            return []
         try:
             descendants = win.descendants()
-        except Exception:
-            descendants = self._desktop.descendants()
+        except Exception:  # noqa: BLE001
+            # If descendants() still fails, try children as a fallback.
+            try:
+                descendants = win.children()
+            except Exception:  # noqa: BLE001
+                return []
         out = []
         for el in descendants:
             try:

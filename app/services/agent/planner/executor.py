@@ -109,9 +109,15 @@ class StepExecutor:
         except Exception as e:  # noqa: BLE001
             logger.debug("[EXECUTOR] emit %s failed: %s", event, _clean(e))
 
-    def _run_tool(self, tool: str, args: dict) -> str:
+    def _run_tool(self, tool: str, args: dict, index: int = 1) -> str:
         try:
-            obs = self._registry.execute(tool, args)
+            action = self._execution_coordinator.action(tool, args, index=index)
+            result = self._execution_coordinator.execute_action(
+                self._execution_context, action, confirmation_already_checked=True
+            )
+            self._execution_actions.append(action)
+            self._execution_results.append(result)
+            obs = result.observation
         except Exception as e:  # noqa: BLE001
             # registry.execute shouldn't raise, but stay defensive.
             return f"ERROR: {_clean(e)}"
@@ -153,6 +159,12 @@ class StepExecutor:
 
     # -- main ----------------------------------------------------------- #
     def run(self, plan: Plan, confirmed: bool = False) -> ExecResult:
+        from app.services.agent.execution import ExecutionContext, get_execution_coordinator
+        self._execution_context = ExecutionContext(plan.goal, "planner")
+        self._execution_coordinator = get_execution_coordinator()
+        self._execution_actions = []
+        self._execution_results = []
+        self._execution_completed = False
         result = ExecResult(goal=plan.goal, ok=True)
         self._emit("plan.started", {"goal": _clean(plan.goal, 120),
                                     "total": len(plan.steps), "source": plan.source})
@@ -191,7 +203,7 @@ class StepExecutor:
             # 3) run (UIA-first: planner prefers ui_* tools for screen actions)
             logger.info("[EXECUTOR] step %d/%d run %s args=%s", idx, len(plan.steps),
                         _clean(step.tool, 30), _clean(step.args, 80))
-            obs = self._run_tool(step.tool, step.args)
+            obs = self._run_tool(step.tool, step.args, idx)
             if self._settle > 0:
                 time.sleep(self._settle)
 
@@ -220,7 +232,7 @@ class StepExecutor:
                 logger.info("[EXECUTOR] step %d fallback -> %s", idx,
                             _clean(step.fallback.get("tool")))
                 fb_obs = self._run_tool(step.fallback.get("tool", ""),
-                                        step.fallback.get("args", {}))
+                                        step.fallback.get("args", {}), idx)
                 if self._settle > 0:
                     time.sleep(self._settle)
                 f_pass, f_fail, f_reason, f_ev, f_src = self._verify_pass(
@@ -275,6 +287,19 @@ class StepExecutor:
 
     def _finish(self, plan: Plan, result: ExecResult) -> None:
         result.summary = self._summarize(result)
+        if getattr(self, "_execution_actions", None) and not self._execution_completed:
+            try:
+                from app.services.agent.execution import ExecutionManifest
+                self._execution_coordinator.complete(ExecutionManifest(
+                    context=self._execution_context,
+                    actions=list(self._execution_actions),
+                    results=list(self._execution_results),
+                    status="completed" if result.ok else "failed",
+                    final_response=result.summary,
+                ))
+                self._execution_completed = True
+            except Exception as e:  # noqa: BLE001
+                logger.debug("[EXECUTOR] completion publish failed: %s", _clean(e))
         self._emit("plan.done", {**result.to_payload(), "summary": result.summary})
         logger.info("[PHASE5] plan done: ok=%s -- %s", result.ok, _clean(result.summary, 160))
 
