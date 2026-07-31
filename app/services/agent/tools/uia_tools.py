@@ -1,51 +1,138 @@
-"""Phase 5 -- generic UI Automation tools.
+"""UI-control tools -- let the agent operate real on-screen controls.
 
-These expose the UIA engine (see automation/uia_engine.py) to the agent as
-ordinary tools, so the LLM can click ANY on-screen control, flip ANY toggle, or
-type into ANY field -- by NAME, with no per-app hardcode.
+These are the tools that turn "open the window" into "do the thing inside the
+window". Every one of them:
 
-This is the real capability that was missing before: with these the agent can
-actually press a YouTube 'Play' button, flip a Settings toggle that the radio
-shortcuts don't cover, or pick a menu item.
+  * runs on the dedicated UI apartment (no COM deadlock),
+  * reports what it actually observed, never a hopeful "done",
+  * on failure returns the real control names it could see, so the agent's next
+    attempt is informed instead of another guess.
 
-All tools are fail-soft: if pywinauto isn't installed (e.g. in the dev sandbox)
-they return a short, honest message instead of crashing -- they NEVER claim a
-click happened when it didn't.
+`ui_do` is the one to prefer: it navigates (search / drill-in / scroll) to reach
+a control that is not on screen yet, which is what most real requests need.
 """
 
 from __future__ import annotations
 
 import logging
+from typing import Any, Dict, List
 
-from app.services.agent.tool_registry import tool
 from app.services.agent.automation import get_uia_engine
+from app.services.agent.automation.navigator import get_navigator
+from app.services.agent.tool_registry import tool
 from app.services.debug_logger import dbg
 
 logger = logging.getLogger("J.A.R.V.I.S")
 
 
-def _say(result: dict, ok_msg: str) -> str:
-    """Turn an engine result dict into a short human string for the agent."""
+# --------------------------------------------------------------------------- #
+# result formatting
+# --------------------------------------------------------------------------- #
+def _fmt_controls(controls: List[Dict[str, Any]], limit: int = 40) -> List[str]:
+    lines = []
+    for control in controls[:limit]:
+        name = " ".join((control.get("name") or "").split())
+        if not name:
+            continue
+        # Document/edit controls report their whole contents as their name, which
+        # can be thousands of characters. Clip so one control cannot swallow the
+        # agent's context window.
+        if len(name) > 90:
+            name = name[:90] + "..."
+        suffix = ""
+        toggle = control.get("toggle")
+        if toggle is not None:
+            suffix += " [on]" if toggle else " [off]"
+        if control.get("enabled") is False:
+            suffix += " [disabled]"
+        lines.append(f"- {name} ({control.get('type') or '?'}){suffix}")
+    return lines
+
+
+def _say(result: Dict[str, Any], ok_msg: str) -> str:
+    """Turn an engine result into a short, honest string for the agent."""
     if result.get("ok"):
-        ev = result.get("evidence")
-        return ev if ev else ok_msg
-    reason = result.get("reason") or "action failed"
-    cands = result.get("candidates") or []
-    if cands:
-        shown = ", ".join(str(c) for c in cands[:6] if c)
+        message = result.get("evidence") or ok_msg
+        trail = result.get("navigation") or []
+        if trail:
+            message += f" (via {', '.join(str(t) for t in trail)})"
+        if result.get("verified") is False:
+            message += " -- but I could not confirm the change took effect"
+        return message
+
+    reason = result.get("reason") or "the action failed"
+    parts = [f"ERROR: {reason}"]
+    options = result.get("actionable") or result.get("candidates") or []
+    if options:
+        shown = ", ".join(str(o) for o in options[:10] if o)
         if shown:
-            return f"ERROR: {reason}. Visible controls: {shown}"
-    return f"ERROR: {reason}"
+            parts.append(f"Controls I can see: {shown}")
+    windows = result.get("windows")
+    if windows and not options:
+        parts.append(f"Open windows: {', '.join(str(w) for w in windows[:8])}")
+    return " ".join(parts)
 
 
+# --------------------------------------------------------------------------- #
+# the main tool: navigate + act
+# --------------------------------------------------------------------------- #
+@tool(
+    name="ui_do",
+    description=(
+        "Do something to a control on screen, even when it is not visible yet. "
+        "This is the tool to use for any request like 'turn on night light', "
+        "'click Check for updates', 'change the output device', 'press Save'. "
+        "It looks at the window, and if the control is not there it uses the "
+        "window's own search box, opens the matching section, or scrolls -- then "
+        "performs the action and confirms the result. Use action='toggle' with "
+        "state for switches and checkboxes, action='type' with text for input "
+        "fields, action='click' for buttons, links, menu and list entries."
+    ),
+    params={
+        "target": {"type": "string",
+                   "description": "Visible name of the control, e.g. 'Night light', 'Check for updates', 'Save'."},
+        "action": {"type": "string", "enum": ["click", "toggle", "type"],
+                   "description": "click a button/link, toggle a switch, or type into a field.",
+                   "required": False},
+        "window": {"type": "string",
+                   "description": "Window title to work in, e.g. 'Settings', 'Chrome'. Leave empty for the active window.",
+                   "required": False},
+        "state": {"type": "boolean",
+                  "description": "For action='toggle': true to switch on, false to switch off.",
+                  "required": False},
+        "text": {"type": "string", "description": "For action='type': the text to enter.",
+                 "required": False},
+    },
+    category="system",
+    verification={"family": "ui"},
+)
+def ui_do(target: str, action: str = "click", window: str = "",
+          state: bool = True, text: str = "") -> str:
+    action = (action or "click").strip().lower()
+    if action not in ("click", "toggle", "type"):
+        action = "click"
+    value = text if action == "type" else state
+    dbg.uia_action(f"ui_do:{action}", target, window=window,
+                   result=f"state={state}" if action == "toggle" else (text[:40] if text else ""))
+    result = get_navigator().reach(target, window=window or None, action=action, value=value)
+    dbg.uia_action(f"ui_do:{action}:result", target, window=window,
+                   result=str(result.get("evidence") or result.get("reason", "")),
+                   ok=bool(result.get("ok")))
+    defaults = {"click": f"Clicked '{target}'.",
+                "toggle": f"Set '{target}' {'on' if state else 'off'}.",
+                "type": f"Typed into '{target}'."}
+    return _say(result, defaults[action])
+
+
+# --------------------------------------------------------------------------- #
+# direct, single-shot primitives
+# --------------------------------------------------------------------------- #
 @tool(
     name="ui_click",
     description=(
-        "Click a real on-screen UI control by its visible name (button, link, "
-        "menu item, list item, tab, etc.). Use this when opening an app or a URL "
-        "is not enough and you must actually press something on screen -- e.g. "
-        "press a 'Play' button, an 'OK'/'Save' button, or pick a menu entry. "
-        "Optionally narrow with the window title or the control type."
+        "Click a control that is already visible in a window, by its exact "
+        "visible name -- a button, link, menu item, list item or tab. If the "
+        "control might not be on screen yet, prefer ui_do instead."
     ),
     params={
         "name": {"type": "string", "description": "Visible text/name of the control to click."},
@@ -53,23 +140,25 @@ def _say(result: dict, ok_msg: str) -> str:
         "control_type": {"type": "string", "description": "Optional control type, e.g. Button, MenuItem, ListItem, Hyperlink.", "required": False},
     },
     category="system",
+    verification={"family": "ui"},
 )
 def ui_click(name: str, window: str = "", control_type: str = "") -> str:
-    eng = get_uia_engine()
     dbg.uia_action("click", name, window=window)
-    res = eng.click(name, window=window or None, control_type=control_type or None)
-    ok = res.get("ok", False)
-    dbg.uia_action("click_result", name, window=window, result=str(res.get("evidence") or res.get("reason", "")), ok=ok)
-    return _say(res, f"Clicked '{name}'.")
+    result = get_uia_engine().click(name, window=window or None,
+                                   control_type=control_type or None)
+    dbg.uia_action("click_result", name, window=window,
+                   result=str(result.get("evidence") or result.get("reason", "")),
+                   ok=bool(result.get("ok")))
+    return _say(result, f"Clicked '{name}'.")
 
 
 @tool(
     name="ui_set_toggle",
     description=(
-        "Turn an on-screen toggle / switch / checkbox on or off by its visible "
-        "name (e.g. a Settings switch like 'Bluetooth', 'Airplane mode', a "
-        "checkbox in a dialog). It first checks the current state and does "
-        "nothing if it is already in the wanted state."
+        "Turn a visible on-screen switch, toggle or checkbox on or off by name. "
+        "It reads the current state first, does nothing if it already matches, "
+        "and reads the control back afterwards to confirm it really changed. "
+        "If the toggle may be on another page, prefer ui_do."
     ),
     params={
         "name": {"type": "string", "description": "Visible name of the toggle/switch/checkbox."},
@@ -77,21 +166,23 @@ def ui_click(name: str, window: str = "", control_type: str = "") -> str:
         "window": {"type": "string", "description": "Optional window title to search inside.", "required": False},
     },
     category="system",
+    verification={"family": "ui"},
 )
 def ui_set_toggle(name: str, on: bool = True, window: str = "") -> str:
-    eng = get_uia_engine()
     dbg.uia_action(f"set_toggle({'on' if on else 'off'})", name, window=window)
-    res = eng.set_toggle(name, bool(on), window=window or None)
-    ok = res.get("ok", False)
-    dbg.uia_action("toggle_result", name, window=window, result=str(res.get("evidence") or res.get("reason", "")), ok=ok)
-    return _say(res, f"Set '{name}' {'on' if on else 'off'}.")
+    result = get_uia_engine().set_toggle(name, bool(on), window=window or None)
+    dbg.uia_action("toggle_result", name, window=window,
+                   result=str(result.get("evidence") or result.get("reason", "")),
+                   ok=bool(result.get("ok")))
+    return _say(result, f"Set '{name}' {'on' if on else 'off'}.")
 
 
 @tool(
     name="ui_type_into",
     description=(
-        "Type text into a named on-screen text field / edit box (e.g. a search "
-        "box or form field). Finds the field by its visible name/label."
+        "Type text into a named on-screen text field, e.g. a search box, a form "
+        "field, or the 'File name' box of a save dialog. Reads the field back to "
+        "confirm the text landed."
     ),
     params={
         "name": {"type": "string", "description": "Visible name/label of the text field."},
@@ -99,73 +190,124 @@ def ui_set_toggle(name: str, on: bool = True, window: str = "") -> str:
         "window": {"type": "string", "description": "Optional window title to search inside.", "required": False},
     },
     category="system",
+    verification={"family": "ui"},
 )
 def ui_type_into(name: str, text: str, window: str = "") -> str:
-    eng = get_uia_engine()
-    dbg.uia_action("type_into", name, window=window, result=f"text='{text[:50]}'")
-    res = eng.set_text(name, text, window=window or None)
-    ok = res.get("ok", False)
-    dbg.uia_action("type_result", name, window=window, result=str(res.get("evidence") or res.get("reason", "")), ok=ok)
-    return _say(res, f"Typed into '{name}'.")
+    dbg.uia_action("type_into", name, window=window, result=f"text='{str(text)[:50]}'")
+    result = get_uia_engine().set_text(name, text, window=window or None)
+    dbg.uia_action("type_result", name, window=window,
+                   result=str(result.get("evidence") or result.get("reason", "")),
+                   ok=bool(result.get("ok")))
+    return _say(result, f"Typed into '{name}'.")
 
 
 @tool(
     name="ui_list_controls",
     description=(
-        "List the visible, interactable controls in the current (or a named) "
-        "window -- useful to discover the exact button/toggle names before "
-        "clicking. Optionally filter by control type. If the window was just "
-        "opened, this tool automatically retries after a short delay if no "
-        "controls are found yet (pages take 1-3s to load)."
+        "List the controls you can actually operate in a window -- buttons, "
+        "switches, links, list entries and text fields, with their current on/off "
+        "state. Use it to discover exact control names before acting, or to answer "
+        "'what options are there'. Optionally filter by control type."
     ),
     params={
-        "window": {"type": "string", "description": "Optional window title to inspect.", "required": False},
-        "control_type": {"type": "string", "description": "Optional filter, e.g. Button, CheckBox, MenuItem, Hyperlink.", "required": False},
+        "window": {"type": "string", "description": "Optional window title to inspect. Empty = the active window.", "required": False},
+        "control_type": {"type": "string", "description": "Optional filter, e.g. Button, CheckBox, MenuItem, Hyperlink, Edit.", "required": False},
+        "include_text": {"type": "boolean", "description": "Also include read-only text labels. Default false.", "required": False},
     },
     category="system",
+    verification={"family": "query", "cacheable": False},
 )
-def ui_list_controls(window: str = "", control_type: str = "") -> str:
-    import time as _time
-    eng = get_uia_engine()
+def ui_list_controls(window: str = "", control_type: str = "",
+                     include_text: bool = False) -> str:
     dbg.uia_action("list_controls", window or "(active)", window=window)
-    res = eng.list_controls(window=window or None, control_type=control_type or None)
-    if not res.get("ok"):
-        dbg.uia_action("list_controls_FAIL", window or "(active)", result=res.get("reason", ""), ok=False)
-        return f"ERROR: {res.get('reason', 'could not list controls')}"
-    items = res.get("controls") or []
-    # Auto-retry: pages/windows take 1-3s to load. If nothing found, wait and retry.
-    if not items:
-        dbg.info("UIA", "No controls found on first try, retrying after 2.5s...")
-        _time.sleep(2.5)
-        res = eng.list_controls(window=window or None, control_type=control_type or None)
-        if res.get("ok"):
-            items = res.get("controls") or []
-    if not items:
-        dbg.uia_action("list_controls_EMPTY", window or "(active)", result="No controls found even after retry", ok=False)
-        return "No interactable controls found in that window. The window may not be open or may still be loading."
-    dbg.uia_action("list_controls_OK", window or "(active)", result=f"{len(items)} controls found", ok=True)
-    lines = []
-    for it in items[:25]:
-        tg = it.get("toggle")
-        suffix = "" if tg is None else (" [on]" if tg else " [off]")
-        lines.append(f"- {it.get('name') or '?'} ({it.get('type') or '?'}){suffix}")
-    return "Controls:\n" + "\n".join(lines)
+    result = get_uia_engine().list_controls(
+        window=window or None, control_type=control_type or None,
+        include_text=bool(include_text),
+    )
+    if not result.get("ok"):
+        dbg.uia_action("list_controls_FAIL", window or "(active)",
+                       result=str(result.get("reason", "")), ok=False)
+        return _say(result, "")
+
+    controls = result.get("controls") or []
+    lines = _fmt_controls(controls)
+    resolved = result.get("window") or "the active window"
+    dbg.uia_action("list_controls_OK", resolved,
+                   result=f"{len(lines)} named of {result.get('actionable_total')} actionable",
+                   ok=True)
+    if not lines:
+        return (f"'{resolved}' has no named controls I can operate right now. "
+                "It may still be loading, or the content may be inside a page that "
+                "needs scrolling.")
+    header = f"Controls in '{resolved}'"
+    if result.get("truncated"):
+        header += f" (showing {len(lines)} of {result.get('actionable_total')} actionable)"
+    return header + ":\n" + "\n".join(lines)
+
+
+@tool(
+    name="ui_scroll",
+    description=(
+        "Scroll a window so controls below the fold come into reach. Use this "
+        "when ui_list_controls does not show the option you expect."
+    ),
+    params={
+        "window": {"type": "string", "description": "Optional window title. Empty = active window.", "required": False},
+        "direction": {"type": "string", "enum": ["down", "up", "top", "bottom"],
+                      "description": "Scroll direction.", "required": False},
+        "amount": {"type": "integer", "description": "How far to scroll (1-15, default 3).", "required": False},
+    },
+    category="system",
+    verification={"family": "ui"},
+)
+def ui_scroll(window: str = "", direction: str = "down", amount: int = 3) -> str:
+    result = get_uia_engine().scroll(window=window or None, direction=direction,
+                                    amount=int(amount or 3))
+    dbg.uia_action("scroll", window or "(active)",
+                   result=str(result.get("evidence") or result.get("reason", "")),
+                   ok=bool(result.get("ok")))
+    return _say(result, f"Scrolled {direction}.")
 
 
 @tool(
     name="ui_wait",
     description=(
-        "Wait/pause for a given number of seconds before the next action. "
-        "Use this when a window or page needs time to load before you can "
-        "interact with it (e.g. after opening a browser page or an app)."
+        "Wait a moment for a window or page to finish loading before inspecting "
+        "or clicking it. Use only when a previous step reported nothing found yet."
     ),
-    params={
-        "seconds": {"type": "number", "description": "Number of seconds to wait (1-10)."},
-    },
+    params={"seconds": {"type": "number", "description": "Seconds to wait (0.5-10).", "required": False}},
     category="system",
+    verification={"family": "query", "cacheable": False},
 )
-def ui_wait(seconds: float = 3.0) -> str:
+def ui_wait(seconds: float = 2.0) -> str:
     import time as _time
-    secs = max(0.5, min(float(seconds), 10.0))
-    _time.sleep(secs)
-    return f"Waited {secs:.1f} seconds."
+    delay = max(0.5, min(float(seconds or 2.0), 10.0))
+    dbg.uia_action("wait", f"{delay:.1f}s")
+    _time.sleep(delay)
+    return f"Waited {delay:.1f} seconds."
+
+
+@tool(
+    name="ui_diagnostics",
+    description=(
+        "Report whether UI automation is working: the apartment state, the "
+        "backend, and the list of windows that can be targeted. Use this when "
+        "several UI actions fail in a row."
+    ),
+    params={},
+    category="system",
+    verification={"family": "query", "cacheable": False},
+)
+def ui_diagnostics() -> str:
+    engine = get_uia_engine()
+    status = engine.status()
+    windows = engine.window_titles()
+    lines = [f"UI automation: {'available' if status.get('alive') else 'NOT running'}",
+             f"apartment={status.get('apartment')} generation={status.get('generation')} "
+             f"retired={status.get('retired')}"]
+    if status.get("backend_error"):
+        lines.append(f"backend error: {status['backend_error']}")
+    titles = windows.get("windows") or []
+    lines.append(f"targetable windows ({len(titles)}): {', '.join(titles[:12]) or 'none'}")
+    dbg.info("UIA", "DIAGNOSTICS", status)
+    return "\n".join(lines)

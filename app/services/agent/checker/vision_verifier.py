@@ -47,7 +47,11 @@ class VisionVerifier:
         """Capture the screen and judge PASS/FAIL for the given question."""
         img_b64 = self._capture()
         if not img_b64:
-            return VerifyResult(models.UNKNOWN, reason="no screenshot", source="vision")
+            return VerifyResult(
+                models.UNKNOWN,
+                reason="screen capture unavailable (Pillow missing?)",
+                source="vision",
+            )
         text = self._ask(question, img_b64)
         if not text:
             return VerifyResult(models.UNKNOWN, reason="vision unavailable", source="vision")
@@ -65,17 +69,60 @@ class VisionVerifier:
 
     # -- internals ------------------------------------------------------- #
     def _capture(self) -> str:
-        try:
-            import base64
-            import io
-            import pyautogui
-            img = pyautogui.screenshot()
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            return base64.b64encode(buf.getvalue()).decode("ascii")
-        except Exception as e:  # noqa: BLE001
-            logger.debug("[VISION] screen capture failed: %s", e)
+        """Grab the screen as base64 JPEG.
+
+        Two capture paths on purpose. pyautogui.screenshot() needs pyscreeze,
+        which silently fails to import when Pillow is missing or mismatched --
+        that is exactly why every vision verdict in production came back as
+        "no screenshot". PIL's ImageGrab is the direct route and needs no shim.
+
+        The image is downscaled and JPEG-encoded: a raw 1920x1200 PNG is several
+        megabytes of base64 per verification, which is slow and wasteful for a
+        yes/no judgement.
+        """
+        import base64
+        import io
+
+        img = None
+        errors = []
+        for label, grab in (
+            ("PIL.ImageGrab", self._grab_pil),
+            ("pyautogui", self._grab_pyautogui),
+        ):
+            try:
+                img = grab()
+                if img is not None:
+                    break
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"{label}: {exc}")
+        if img is None:
+            logger.warning("[VISION] screen capture unavailable (%s). "
+                           "Install Pillow to enable visual verification.",
+                           "; ".join(errors) or "no capture backend")
             return ""
+        try:
+            img = img.convert("RGB")
+            width, height = img.size
+            longest = max(width, height)
+            if longest > 1280:
+                scale = 1280.0 / float(longest)
+                img = img.resize((max(1, int(width * scale)), max(1, int(height * scale))))
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=70, optimize=True)
+            return base64.b64encode(buf.getvalue()).decode("ascii")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[VISION] screenshot encode failed: %s", exc)
+            return ""
+
+    @staticmethod
+    def _grab_pil():
+        from PIL import ImageGrab
+        return ImageGrab.grab()
+
+    @staticmethod
+    def _grab_pyautogui():
+        import pyautogui
+        return pyautogui.screenshot()
 
     def _ask(self, question: str, img_b64: str) -> str:
         prompt = (

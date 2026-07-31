@@ -41,7 +41,14 @@ logger = logging.getLogger("J.A.R.V.I.S")
         },
     },
     category="system",
-    dangerous=True,
+    # NOT dangerous. This tool only *plans*; each individual step it runs goes
+    # through the executor's own risk gate (PHASE5_CONFIRM_RISKY), so a risky
+    # step still pauses for consent. Marking the planner itself dangerous forced
+    # a confirmation round-trip on EVERY multi-step command -- in a real session
+    # that turned four requests into eight turns and caused a pending action to
+    # be dropped, after which the assistant claimed it had run.
+    dangerous=False,
+    verification={"family": "none"},
 )
 def do_multistep(goal: str, confirm: bool = False) -> str:
     goal = (goal or "").strip()

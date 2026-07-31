@@ -77,6 +77,11 @@ class SystemStateWatcher:
         self._active_window: str = ""
         # clipboard + settings (toggles) live snapshot
         self._clipboard_preview: str = ""
+        # Recent clipboard entries, newest first. Fed by the existing tick --
+        # deliberately NOT a second poller. RAM only, never logged, never
+        # written to disk: the clipboard can hold a password.
+        self._clipboard_history: List[str] = []
+        self._clipboard_history_max: int = 20
         self._settings: Dict = {}
         self._tick: int = 0
         # settings are heavier to read, so refresh them every Nth tick only
@@ -259,6 +264,17 @@ class SystemStateWatcher:
         preview = text[:200]
         with self._lock:
             self._clipboard_preview = preview
+            # Ring buffer of distinct entries. Re-copying the same thing must not
+            # push everything else out.
+            if preview and (not self._clipboard_history
+                            or self._clipboard_history[0] != preview):
+                self._clipboard_history.insert(0, preview)
+                del self._clipboard_history[self._clipboard_history_max:]
+
+    def clipboard_history(self, limit: int = 20) -> List[str]:
+        """Recent distinct clipboard entries, newest first. RAM only."""
+        with self._lock:
+            return list(self._clipboard_history[:max(1, int(limit))])
 
     def _refresh_settings(self) -> None:
         """Snapshot toggle state (volume/brightness/wifi/bluetooth). Best-effort:

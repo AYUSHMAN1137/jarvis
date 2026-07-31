@@ -55,11 +55,8 @@ class CommandCache:
         self._conn: Optional[sqlite3.Connection] = None
         self.enabled = False
         try:
-            self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
-            try:
-                self._conn.execute("PRAGMA journal_mode=WAL")
-            except Exception:  # noqa: BLE001 - WAL is an optimization, not required
-                pass
+            from app.services.db import open_db
+            self._conn = open_db(self._db_path, label="command_cache")
             self._init_schema()
             self.enabled = True
             logger.info("[CACHE] command cache ready (%s, max=%d).", self._db_path, self.max_entries)
@@ -208,7 +205,127 @@ class CommandCache:
         except Exception as e:  # noqa: BLE001
             logger.debug("[CACHE] evict failed: %s", e)
 
+    def purge(self, trigger: Any) -> bool:
+        """Delete an entry outright (used when a stored action is simply wrong)."""
+        if not self.enabled or not self._conn:
+            return False
+        try:
+            trig = self.normalize(trigger)
+            with self._lock:
+                cur = self._conn.execute("DELETE FROM command_cache WHERE trigger=?", (trig,))
+                self._conn.commit()
+            if cur.rowcount:
+                logger.info("[CACHE] purged: '%s'", trig)
+            return bool(cur.rowcount)
+        except Exception as e:  # noqa: BLE001
+            logger.debug("[CACHE] purge failed: %s", e)
+            return False
+
+    def active_triggers(self) -> List[str]:
+        """Every live trigger, for paraphrase matching and auditing."""
+        if not self.enabled or not self._conn:
+            return []
+        try:
+            with self._lock:
+                rows = self._conn.execute(
+                    "SELECT trigger FROM command_cache "
+                    "WHERE status='active' AND verified=1"
+                ).fetchall()
+            return [r[0] for r in rows]
+        except Exception as e:  # noqa: BLE001
+            logger.debug("[CACHE] active_triggers failed: %s", e)
+            return []
+
+    def audit(self) -> List[Dict[str, Any]]:
+        """Find stored entries whose action cannot possibly satisfy their trigger.
+
+        This exists because it really happened: "turn off night light" was
+        promoted with a single `open_application(Settings)` step, so every later
+        replay would open Settings and report success. Reuses the planner's
+        shortfall rule so the audit and the planner cannot drift apart.
+        """
+        from app.services.agent.planner.planner import plan_shortfall
+
+        class _Step:
+            def __init__(self, tool: str, description: str = "") -> None:
+                self.tool = tool
+                self.description = description
+
+        problems: List[Dict[str, Any]] = []
+        for entry in self._all_with_payload():
+            payload = entry.get("payload") or {}
+            if entry.get("kind") == KIND_PLAN:
+                steps = [_Step(str(s.get("tool", "")), str(s.get("description", "")))
+                         for s in (payload.get("steps") or [])]
+            elif entry.get("kind") == KIND_TOOL:
+                steps = [_Step(str(payload.get("tool", "")))]
+            else:
+                continue
+            if not steps:
+                continue
+            shortfall = plan_shortfall(entry.get("trigger", ""), steps)
+            if shortfall:
+                problems.append({
+                    "trigger": entry.get("trigger", ""),
+                    "kind": entry.get("kind"),
+                    "tools": [s.tool for s in steps],
+                    "reason": shortfall,
+                })
+        return problems
+
+    def _all_with_payload(self) -> List[Dict[str, Any]]:
+        """Active entries INCLUDING their payload (list_entries omits it)."""
+        if not self.enabled or not self._conn:
+            return []
+        try:
+            with self._lock:
+                rows = self._conn.execute(
+                    "SELECT trigger, kind, payload FROM command_cache "
+                    "WHERE status='active'"
+                ).fetchall()
+            return [{"trigger": r[0], "kind": r[1], "payload": self._loads(r[2])}
+                    for r in rows]
+        except Exception as e:  # noqa: BLE001
+            logger.debug("[CACHE] payload scan failed: %s", e)
+            return []
+
+    def purge_mismatched(self) -> List[Dict[str, Any]]:
+        """Delete every entry the audit flags as unable to satisfy its command."""
+        problems = self.audit()
+        for problem in problems:
+            self.purge(problem["trigger"])
+        if problems:
+            logger.warning("[CACHE] purged %d entry(ies) whose action did not match "
+                           "the command: %s", len(problems),
+                           ", ".join(p["trigger"] for p in problems[:6]))
+        return problems
+
     # -- reads ----------------------------------------------------------- #
+    def get_similar(self, trigger: Any, min_core: float = 0.7):
+        """Exact miss fallback: find a stored command that means the same thing.
+
+        Returns (entry, matched_trigger, score) or None. Conservative on purpose --
+        a cache hit executes something, so a wrong match does the wrong thing.
+        """
+        if not self.enabled or not self._conn:
+            return None
+        try:
+            from app.services.agent.cache.signature import match_command
+            candidates = self.active_triggers()
+            if not candidates:
+                return None
+            found = match_command(str(trigger or ""), candidates, min_core=min_core)
+            if not found:
+                return None
+            matched, score = found
+            entry = self.get(matched)
+            if entry is None:
+                return None
+            return entry, matched, score
+        except Exception as e:  # noqa: BLE001
+            logger.debug("[CACHE] get_similar failed: %s", e)
+            return None
+
     def get(self, trigger: Any) -> Optional[Dict[str, Any]]:
         """Return an active, verified cache entry for the exact command, or None."""
         if not self.enabled or not self._conn:

@@ -39,7 +39,7 @@ class ExecutionCoordinator:
     def __init__(self, registry=None, memory=None, phase4=None, clock=None) -> None:
         self.registry = registry or default_registry
         self._memory = memory
-        self._phase4 = phase4
+        self._phase4_override = phase4
         self._clock = clock or time.time
 
     def action(self, tool: str, args: dict, index: int = 1, action_id: str = "") -> ActionSpec:
@@ -80,17 +80,11 @@ class ExecutionCoordinator:
         finally:
             _scope.confirmed = False
             _scope.tool = ""
-        frontend_actions = {}
-        try:
-            from app.services.agent import action_sink
-            if action_sink.has_actions():
-                action_sink.attach_dispatch(context.execution_id, action.action_id)
-                frontend_actions = action_sink.collect()
-        except Exception:
-            frontend_actions = {}
+        frontend_actions = self._drain_frontend_actions(context, action)
         finished = self._clock()
         ok = not str(observation).startswith("ERROR")
-        dbg.tool_result(action.tool, observation, ok=ok, step=action.index)
+        dbg.tool_result(action.tool, observation, ok=ok, step=action.index,
+                        duration_ms=max(0.0, (finished - started) * 1000.0))
         result = ActionResult(context.execution_id, action.action_id, action.tool,
                               action.args, started, finished, ok, str(observation),
                               frontend_actions=frontend_actions,
@@ -98,6 +92,43 @@ class ExecutionCoordinator:
                               error_message="" if ok else str(observation)[:300])
         self._record(context, result)
         return result
+
+    def _phase4(self):
+        p4 = self._phase4_override
+        if p4 is None:
+            from app.services.agent.checker import get_phase4
+            p4 = get_phase4()
+        return p4
+
+    def _drain_frontend_actions(self, context: ExecutionContext,
+                                action: ActionSpec) -> dict:
+        """Take this action's browser payload and register it for acknowledgement.
+
+        Registration happens here, inside execute_action, strictly before the
+        chat layer yields `_actions` -- so the browser can never post an ack for
+        a dispatch the coordinator has not heard of yet. That ordering bug is
+        why `_verify_frontend` returned UNKNOWN for every web tool ever run.
+
+        The sink is drained (not copied), so each action owns its own payload
+        and its own dispatch_id.
+        """
+        try:
+            from app.services.agent import action_sink
+            if not action_sink.has_actions():
+                return {}
+            dispatch_id = action_sink.attach_dispatch(context.execution_id,
+                                                      action.action_id)
+            if dispatch_id:
+                try:
+                    self._phase4().register_dispatch(
+                        dispatch_id, action.action_id, tool=action.tool,
+                        execution_id=context.execution_id)
+                except Exception as exc:  # noqa: BLE001 - never lose the action
+                    logger.debug("[EXECUTION] dispatch register skipped: %s", exc)
+            return action_sink.collect(drain=True)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[EXECUTION] frontend action drain failed: %s", exc)
+            return {}
 
     def _record(self, context: ExecutionContext, result: ActionResult) -> None:
         try:
@@ -111,13 +142,10 @@ class ExecutionCoordinator:
         except Exception as exc:
             logger.debug("[EXECUTION] memory record skipped: %s", exc)
         try:
-            p4 = self._phase4
-            if p4 is None:
-                from app.services.agent.checker import get_phase4
-                p4 = get_phase4()
-            p4.publish_action_done(result.tool, result.args, result.observation,
-                                   context.user_message, execution_id=context.execution_id,
-                                   action_id=result.action_id)
+            self._phase4().publish_action_done(
+                result.tool, result.args, result.observation,
+                context.user_message, execution_id=context.execution_id,
+                action_id=result.action_id)
         except Exception as exc:
             logger.debug("[EXECUTION] action publish skipped: %s", exc)
 
@@ -140,13 +168,9 @@ class ExecutionCoordinator:
 
     def complete(self, manifest: ExecutionManifest) -> None:
         try:
-            p4 = self._phase4
-            if p4 is None:
-                from app.services.agent.checker import get_phase4
-                p4 = get_phase4()
-            p4.publish_execution_completed(manifest.context.execution_id,
-                                           manifest.context.user_message,
-                                           manifest.step_payloads(), manifest.ok)
+            self._phase4().publish_execution_completed(
+                manifest.context.execution_id, manifest.context.user_message,
+                manifest.step_payloads(), manifest.ok)
         except Exception as exc:
             logger.debug("[EXECUTION] completion publish skipped: %s", exc)
         dbg.execution_event("verification queued", manifest.context.execution_id,

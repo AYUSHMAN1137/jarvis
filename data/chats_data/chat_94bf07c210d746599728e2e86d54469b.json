@@ -1,0 +1,59 @@
+{
+  "schema_version": 2,
+  "session_id": "94bf07c2-10d7-4659-9728-e2e86d54469b",
+  "title": "Open YouTube.",
+  "title_is_custom": false,
+  "created_at": "2026-07-30T21:50:57+05:30",
+  "updated_at": "2026-07-30T21:51:59+05:30",
+  "message_count": 12,
+  "messages": [
+    {
+      "role": "user",
+      "content": "Open YouTube."
+    },
+    {
+      "role": "assistant",
+      "content": "Opening youtube, Sir."
+    },
+    {
+      "role": "user",
+      "content": "Play ishq song."
+    },
+    {
+      "role": "assistant",
+      "content": "Done."
+    },
+    {
+      "role": "user",
+      "content": "It's not playing."
+    },
+    {
+      "role": "assistant",
+      "content": "I’ll try to play the Ishq song again. Could you tell me the artist or exact title you want?"
+    },
+    {
+      "role": "user",
+      "content": "It's a Pakistani song."
+    },
+    {
+      "role": "assistant",
+      "content": "I’ll look for a Pakistani song titled “Ishq.” If you know the artist or any extra words in the title, let me know."
+    },
+    {
+      "role": "user",
+      "content": "Bai Fahim Abdullah."
+    },
+    {
+      "role": "assistant",
+      "content": "I’ll search for Fahim Abdullah’s Pakistani track “Ishq” on YouTube and start playing it."
+    },
+    {
+      "role": "user",
+      "content": "Search for it."
+    },
+    {
+      "role": "assistant",
+      "content": "Searching Google for it, Sir."
+    }
+  ]
+}

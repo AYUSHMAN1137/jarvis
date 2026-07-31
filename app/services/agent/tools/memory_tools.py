@@ -40,6 +40,7 @@ logger = logging.getLogger("J.A.R.V.I.S")
         },
     },
     category="system",
+    verification={"family": "memory"},
 )
 def remember(fact: str, category: str = "general") -> str:
     return get_memory().remember(fact, category=category, source="assistant")
@@ -60,6 +61,7 @@ def remember(fact: str, category: str = "general") -> str:
         },
     },
     category="system",
+    verification={"family": "query", "cacheable": False},
 )
 def recall(query: str) -> str:
     res = get_memory().recall(query)
@@ -81,6 +83,7 @@ def recall(query: str) -> str:
         },
     },
     category="system",
+    verification={"family": "memory"},
 )
 def forget(query: str) -> str:
     n = get_memory().forget(query)
@@ -107,6 +110,7 @@ def forget(query: str) -> str:
         },
     },
     category="system",
+    verification={"family": "memory"},
 )
 def note_correction(wrong: str, right: str) -> str:
     return get_memory().record_correction(wrong, right) or "Noted."

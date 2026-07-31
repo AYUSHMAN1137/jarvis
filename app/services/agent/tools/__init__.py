@@ -19,6 +19,9 @@ from app.services.agent.tools import memory_tools      # noqa: F401
 from app.services.agent.tools import system_info_tools # noqa: F401
 from app.services.agent.tools import uia_tools         # noqa: F401  (Phase 5)
 from app.services.agent.tools import planner_tools     # noqa: F401  (Phase 5)
+from app.services.agent.tools import screen_tools      # noqa: F401  (OCR)
+from app.services.agent.tools import reminder_tools    # noqa: F401  (M8 Reminders)
+from app.services.agent.tools import notes_tools       # noqa: F401  (Notes & To-Do)
 
 
 def load_all_tools() -> None:

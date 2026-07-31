@@ -339,6 +339,7 @@ def _toggle_tool(kind_name: str, label: str, action: str) -> str:
         }
     },
     category="system",
+    verification={"family": "toggle", "capability": "network.wifi"},
 )
 def wifi_control(action: str = "status") -> str:
     return _toggle_tool("wifi", "Wi-Fi", action)
@@ -358,6 +359,7 @@ def wifi_control(action: str = "status") -> str:
         }
     },
     category="system",
+    verification={"family": "toggle", "capability": "network.bluetooth"},
 )
 def bluetooth_control(action: str = "status") -> str:
     return _toggle_tool("bluetooth", "Bluetooth", action)
@@ -372,6 +374,7 @@ def bluetooth_control(action: str = "status") -> str:
     ),
     params={},
     category="system",
+    verification={"family": "query", "cacheable": False},
 )
 def get_system_status() -> str:
     s = read_system_status()
@@ -464,6 +467,7 @@ def _set_all_radios(on: bool) -> str:
         }
     },
     category="system",
+    verification={"family": "toggle", "capability": "network.airplane"},
 )
 def airplane_mode(action: str = "on") -> str:
     act = (action or "").strip().lower()
@@ -505,10 +509,17 @@ def airplane_mode(action: str = "on") -> str:
     ),
     params={},
     category="system",
+    verification={"family": "ui"},
 )
 def check_for_updates() -> str:
-    """Open Windows Update settings and click 'Check for updates' via UIA."""
-    # Step 1: Open the Windows Update page directly (deep link).
+    """Open Windows Update and press the update button via generic navigation.
+
+    This used to hardcode four candidate button labels and give up when none
+    matched, which cost ~60s of dead UI timeouts per attempt and broke on any
+    Windows build or locale that words the button differently. It now opens the
+    page and hands the goal to the generic navigator, which reads the real
+    control tree instead of guessing names.
+    """
     try:
         subprocess.Popen(
             ["cmd", "/c", "start", "ms-settings:windowsupdate"],
@@ -518,41 +529,103 @@ def check_for_updates() -> str:
     except Exception as exc:  # noqa: BLE001
         return f"ERROR: Could not open Windows Update settings: {exc}"
 
-    # Step 2: Give the Settings page time to fully render.
-    time.sleep(2.5)
+    time.sleep(2.0)
 
-    # Step 3: Click the 'Check for updates' button via UI Automation.
-    eng = get_uia_engine()
+    from app.services.agent.automation.navigator import get_navigator
+    nav = get_navigator()
 
-    # Try the most common button names (varies by Windows version/locale).
-    button_names = [
-        "Check for updates",
-        "Check for Updates",
-        "Download",
-        "Download and install",
-    ]
-    for btn_name in button_names:
-        res = eng.click(btn_name, window="Settings")
-        if res.get("ok"):
-            evidence = res.get("evidence") or f"Clicked '{btn_name}'."
-            return f"Windows Update page opened and I clicked '{btn_name}'. {evidence}"
+    # Whichever of these exists on this build is the right one to press. The
+    # navigator scores against the live tree, so an unlisted wording still wins
+    # if it is the closest actionable control on the page.
+    for goal in ("Check for updates", "Download and install", "Resume updates",
+                 "Restart now", "Install now"):
+        result = nav.reach(goal, window="Settings", action="click")
+        if result.get("ok"):
+            return (f"Windows Update is open and I pressed '{goal}'. "
+                    f"{result.get('evidence', '')}").strip()
 
-    # If none of the known names worked, list what IS visible so the LLM
-    # can decide the next step (e.g. updates already up-to-date, or the
-    # button has a different label on this Windows build).
-    listing = eng.list_controls(window="Settings")
-    if listing.get("ok"):
-        controls = listing.get("controls") or []
-        names = [c.get("name") for c in controls[:15] if c.get("name")]
-        if names:
-            return (
-                "I opened Windows Update settings but couldn't find a "
-                f"'Check for updates' button. Visible controls: {', '.join(names)}. "
-                "The system may already be up to date."
-            )
+    listing = get_uia_engine().list_controls(window="Settings")
+    controls = [c.get("name") for c in (listing.get("controls") or [])
+                if (c.get("name") or "").strip()]
+    if controls:
+        return ("I opened Windows Update but found no update button to press. "
+                f"The page currently offers: {', '.join(controls[:12])}. "
+                "That usually means Windows is already up to date.")
+    return ("I opened the Windows Update page but could not read its controls, "
+            "so I cannot confirm whether an update check started.")
 
-    return (
-        "I opened the Windows Update settings page, but I couldn't find or "
-        "click the 'Check for updates' button. The page may still be loading "
-        "or your Windows version uses a different layout."
-    )
+
+@tool(
+    name="bluetooth_connect_device",
+    description=(
+        "Connect or disconnect a specific paired Bluetooth device by name, or "
+        "list paired devices. Use for 'connect my headphones', 'earbuds connect "
+        "karo'. bluetooth_control only turns the radio on and off."
+    ),
+    params={
+        "name": {"type": "string", "required": False,
+                 "description": "Device name or part of it, e.g. 'boat' or 'airdopes'. Omit to list paired devices."},
+        "action": {"type": "string", "required": False,
+                   "description": "connect (default) or disconnect.",
+                   "enum": ["connect", "disconnect"]},
+    },
+    category="system",
+    verification={"family": "ui"},
+)
+def bluetooth_connect_device(name: str = "", action: str = "connect") -> str:
+    """Driven through the Bluetooth settings page.
+
+    Windows exposes no supported API for connecting an already-paired device --
+    the radio APIs in winsdk only cover the adapter itself. So this navigates
+    the real Settings UI, which is also exactly what the user would do, and it
+    reads the result back rather than assuming.
+    """
+    target = (name or "").strip()
+    action = (action or "connect").strip().lower()
+    if action not in ("connect", "disconnect"):
+        return "ERROR: action must be 'connect' or 'disconnect'."
+
+    from app.services.agent.automation import get_uia_engine
+
+    page = open_settings_page("bluetooth")
+    if str(page).startswith("ERROR"):
+        return page
+
+    # The Bluetooth page populates its device list asynchronously, so reading it
+    # immediately after opening returns an empty tree.
+    time.sleep(2.0)
+
+    engine = get_uia_engine()
+    listing = engine.list_controls(window="Settings")
+    controls = [str(c.get("name") or "").strip()
+                for c in (listing.get("controls") or [])
+                if (c.get("name") or "").strip()]
+
+    if not target:
+        # No name given -> answer "what is paired?" instead of failing.
+        devices = [c for c in controls
+                   if any(w in c.lower() for w in ("connect", "paired", "audio"))]
+        shown = devices or controls[:15]
+        if not shown:
+            return ("I opened Bluetooth settings but could not read the device "
+                    "list. Have a look at the window.")
+        return "Bluetooth settings are open. I can see: " + ", ".join(shown[:15])
+
+    match = next((c for c in controls if target.lower() in c.lower()), None)
+    if match is None:
+        return (f"ERROR: '{target}' is not in the Bluetooth device list. "
+                f"Visible entries: {', '.join(controls[:12]) or 'none readable'}. "
+                f"The device may need pairing first, or may be switched off.")
+
+    from app.services.agent.automation.navigator import get_navigator
+    nav = get_navigator()
+    # Windows labels the button "Connect"/"Disconnect" next to the device, and
+    # for some devices the device row itself is the actionable control.
+    for goal in (f"{action.capitalize()}", match):
+        result = nav.reach(goal, window="Settings", action="click")
+        if result.get("ok"):
+            return (f"Asked Windows to {action} '{match}'. "
+                    f"{result.get('evidence', '')}").strip()
+
+    return (f"ERROR: I found '{match}' but could not press its {action} button. "
+            f"The device row may need to be selected first.")

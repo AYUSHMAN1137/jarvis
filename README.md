@@ -132,7 +132,7 @@ jarvis-2-main/
 │   │   ├── skills/                      # Gmail, Calendar, Drive, OAuth
 │   │   ├── testing/                     # Real-machine command test runner
 │   │   ├── watcher/                     # Live Windows state watcher
-│   │   ├── brain_service.py             # Request classification/routing
+│   │   ├── resolver.py                  # Understanding layer: utterance -> goal + kind (M13)
 │   │   ├── chat_service.py              # Main conversation orchestrator
 │   │   ├── groq_service.py              # General LLM conversation service
 │   │   ├── realtime_service.py          # Web-grounded responses

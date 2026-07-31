@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "session_id": "50ac2b97-af75-4a12-bed0-faff9fcf7c11",
+  "title": "hello there",
+  "title_is_custom": false,
+  "created_at": "2026-08-01T01:16:53+05:30",
+  "updated_at": "2026-08-01T01:17:16+05:30",
+  "message_count": 6,
+  "messages": [
+    {
+      "role": "user",
+      "content": "hello there"
+    },
+    {
+      "role": "assistant",
+      "content": "Hello, Bai. How can I assist you today?"
+    },
+    {
+      "role": "user",
+      "content": "what is a closure in python"
+    },
+    {
+      "role": "assistant",
+      "content": "A closure is a nested function that captures variables from its enclosing scope, allowing it to retain those values even after the outer function has finished."
+    },
+    {
+      "role": "user",
+      "content": "what's my battery level"
+    },
+    {
+      "role": "assistant",
+      "content": "The battery is at 100% and is currently charging."
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "session_id": "ab6ecf78-8593-443d-b371-6e7519351fc0",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello, Jarvis."
+    },
+    {
+      "role": "assistant",
+      "content": "Hello, Ayush. How can I help you today?"
+    },
+    {
+      "role": "user",
+      "content": "How are you, man?"
+    },
+    {
+      "role": "assistant",
+      "content": "I'm good, thanks. What's up?"
+    },
+    {
+      "role": "user",
+      "content": "Tell me everything you know about me."
+    },
+    {
+      "role": "assistant",
+      "content": "Ayush, you’re a second‑year BCA student who prefers English, takes courses in machine learning, database management systems and AI, and are working on a final‑year B.Tech project called JARVIS. You like short answers, and your typical habits are: after a UI wait you often play something on YouTube; after listening to Arijit Singh you tend to pause; after Talwinder music you usually open the settings page, which then leads to YouTube again. You’ve asked me to open apps and check updates before."
+    }
+  ]
+}

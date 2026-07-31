@@ -32,6 +32,7 @@ def _set_volume_pycaw(level: int) -> bool:
     description="Set the system master volume to a percentage from 0 to 100.",
     params={"level": {"type": "int", "description": "Volume percent, 0-100."}},
     category="system",
+    verification={"family": "toggle", "capability": "system.volume"},
 )
 def set_volume(level: int) -> str:
     try:
@@ -55,6 +56,7 @@ def set_volume(level: int) -> str:
         }
     },
     category="system",
+    verification={"family": "toggle", "capability": "system.mute"},
 )
 def mute_volume(mute: bool = True) -> str:
     try:
@@ -71,6 +73,7 @@ def mute_volume(mute: bool = True) -> str:
     description="Set the screen brightness to a percentage from 0 to 100.",
     params={"level": {"type": "int", "description": "Brightness percent, 0-100."}},
     category="system",
+    verification={"family": "toggle", "capability": "system.brightness"},
 )
 def set_brightness(level: int) -> str:
     try:
@@ -102,6 +105,7 @@ def set_brightness(level: int) -> str:
         }
     },
     category="system",
+    verification={"family": "none"},
 )
 def media_control(action: str) -> str:
     key_map = {
@@ -131,6 +135,7 @@ def media_control(action: str) -> str:
     params={},
     dangerous=False,
     category="system",
+    verification={"family": "none"},
 )
 def lock_screen() -> str:
     try:
@@ -155,6 +160,7 @@ def lock_screen() -> str:
     },
     dangerous=True,
     category="system",
+    verification={"family": "none"},
 )
 def shutdown_computer(delay_seconds: int = 5) -> str:
     try:
@@ -184,6 +190,7 @@ def shutdown_computer(delay_seconds: int = 5) -> str:
     },
     dangerous=True,
     category="system",
+    verification={"family": "none"},
 )
 def restart_computer(delay_seconds: int = 5) -> str:
     try:
@@ -204,6 +211,7 @@ def restart_computer(delay_seconds: int = 5) -> str:
     params={},
     dangerous=True,
     category="system",
+    verification={"family": "none"},
 )
 def sleep_computer() -> str:
     try:
@@ -218,6 +226,7 @@ def sleep_computer() -> str:
     description="Cancel a pending shutdown or restart that was scheduled with a delay.",
     params={},
     category="system",
+    verification={"family": "none"},
 )
 def cancel_power_action() -> str:
     try:
@@ -243,6 +252,7 @@ def cancel_power_action() -> str:
         }
     },
     category="system",
+    verification={"family": "toggle", "capability": "privacy.camera"},
 )
 def camera_control(action: str = "") -> str:
     act = (action or "").strip().lower()
@@ -280,3 +290,80 @@ def camera_control(action: str = "") -> str:
     state = "on (apps can use it)" if want == "Allow" else "off (apps blocked)"
     logger.info("[SYSTEM] Camera access set to %s", want)
     return f"Camera is now {state}."
+
+
+@tool(
+    name="app_volume",
+    description=(
+        "Change the volume of ONE application without touching the rest, or "
+        "list which apps are currently playing audio. Use for 'turn Spotify "
+        "down', 'mute Chrome', 'Spotify ka volume 20 karo'. To change the "
+        "whole system volume use set_volume instead."
+    ),
+    params={
+        "app": {"type": "string", "required": False,
+                "description": "App name, e.g. 'Spotify' or 'Chrome'. Omit to list all apps playing audio."},
+        "level": {"type": "int", "required": False,
+                  "description": "Volume for that app, 0-100."},
+        "mute": {"type": "boolean", "required": False,
+                 "description": "True to mute this app, False to unmute."},
+    },
+    category="system",
+    verification={"family": "query", "cacheable": False},
+)
+def app_volume(app: str = "", level: int = None, mute: bool = None) -> str:
+    from app.services.agent.tools import _audio
+
+    # No app named -> answer "what is playing?" instead of failing.
+    if not (app or "").strip():
+        try:
+            sessions = _audio.list_app_sessions()
+        except Exception as e:  # noqa: BLE001
+            return f"ERROR: could not read app volumes ({e})."
+        if not sessions:
+            return "No application is using audio right now."
+        lines = [f"{s['name']}: {s['volume']}%" + (" (muted)" if s["muted"] else "")
+                 for s in sessions]
+        return "Apps using audio:\n" + "\n".join(lines)
+
+    if level is None and mute is None:
+        # Named an app but asked for no change -> report its current state.
+        try:
+            sessions = _audio.list_app_sessions()
+        except Exception as e:  # noqa: BLE001
+            return f"ERROR: could not read app volumes ({e})."
+        target = app.strip().lower()
+        for s in sessions:
+            if target in s["name"].lower():
+                muted = " (muted)" if s["muted"] else ""
+                return f"{s['name']} is at {s['volume']}%{muted}."
+        names = ", ".join(s["name"] for s in sessions) or "none"
+        return f"ERROR: '{app}' is not playing audio. Currently playing: {names}."
+
+    if level is not None:
+        try:
+            level = int(level)
+        except (TypeError, ValueError):
+            return "ERROR: level must be a number between 0 and 100."
+        if not 0 <= level <= 100:
+            return "ERROR: level must be between 0 and 100."
+
+    try:
+        result = _audio.set_app_volume(app, level_0_100=level, mute=mute)
+    except Exception as e:  # noqa: BLE001
+        return f"ERROR: could not change the volume for '{app}' ({e})."
+
+    if result is None:
+        try:
+            names = ", ".join(s["name"] for s in _audio.list_app_sessions()) or "none"
+        except Exception:  # noqa: BLE001
+            names = "unknown"
+        return (f"ERROR: '{app}' is not playing audio, so it has no volume "
+                f"control. Currently playing: {names}.")
+
+    logger.info("[SYSTEM] %s volume -> %d%% muted=%s",
+                result["name"], result["volume"], result["muted"])
+    if mute is not None and level is None:
+        return f"{result['name']} is now {'muted' if result['muted'] else 'unmuted'}."
+    muted = " (muted)" if result["muted"] else ""
+    return f"{result['name']} volume set to {result['volume']}%{muted}."

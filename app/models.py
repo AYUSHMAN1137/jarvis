@@ -19,6 +19,30 @@ class ChatHistory(BaseModel):
     session_id: str
     messages: List[ChatMessage]
 
+class ConversationSummary(BaseModel):
+    session_id: str
+    title: str
+    preview: str = ""
+    created_at: str
+    updated_at: str
+    message_count: int = 0
+
+class ConversationList(BaseModel):
+    conversations: List[ConversationSummary] = []
+    next_cursor: Optional[str] = None
+    total: int = 0
+
+class ConversationDetail(BaseModel):
+    session_id: str
+    title: str
+    created_at: str
+    updated_at: str
+    message_count: int = 0
+    messages: List[ChatMessage] = []
+
+class ConversationRenameRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+
 class JarvisActions(BaseModel):
     wopens: List[str] = []
     plays: List[str] = []

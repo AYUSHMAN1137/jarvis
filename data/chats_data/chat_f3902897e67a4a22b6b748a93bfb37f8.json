@@ -1,0 +1,13 @@
+{
+  "session_id": "f3902897-e67a-4a22-b6b7-48a93bfb37f8",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What's the latest news today?"
+    },
+    {
+      "role": "assistant",
+      "content": "Today’s headlines include President Trump meeting separately with Ukraine’s Zelenskyy and Israel’s Netanyahu, the United States walking out of a UN session over France’s human‑rights criticism, and a 7.1‑magnitude earthquake striking Japan’s Kyushu region. Other notable stories are a teen killed by lightning while shielding his brother and FIFA proposing a $20 billion commercial spinoff."
+    }
+  ]
+}

@@ -11,12 +11,35 @@ from pathlib import Path
 
 
 # Keep this unit test independent of optional runtime dependencies.
+#
+# This stub lands in sys.modules for the whole pytest session, so anything
+# imported afterwards sees it too. Overriding only these four names and letting
+# every other attribute fall through to the real config keeps that from
+# silently breaking unrelated modules (a partial config used to make them think
+# config was unavailable and quietly disable themselves).
 _tmp = tempfile.TemporaryDirectory()
 _config = types.ModuleType("config")
 _config.BASE_DIR = Path(_tmp.name)
 _config.PHASE6_ENABLED = True
 _config.COMMAND_CACHE_DB_PATH = Path(_tmp.name) / "cache.db"
 _config.CACHE_MAX_ENTRIES = 100
+
+
+def _delegate_to_real_config(name: str):
+    real = sys.modules.get("_real_config")
+    if real is None:
+        spec = importlib.util.spec_from_file_location(
+            "_real_config", Path(__file__).resolve().parent.parent / "config.py")
+        real = importlib.util.module_from_spec(spec)
+        sys.modules["_real_config"] = real
+        spec.loader.exec_module(real)
+    try:
+        return getattr(real, name)
+    except AttributeError as exc:
+        raise AttributeError(name) from exc
+
+
+_config.__getattr__ = _delegate_to_real_config
 sys.modules.setdefault("config", _config)
 
 coordinator_module = importlib.import_module("app.services.agent.cache.coordinator")
@@ -101,6 +124,9 @@ class ExecutionCacheTests(unittest.TestCase):
             {"action_id": "a1", "tool": "open_application", "args": {"app_name": "notepad"}},
             {"action_id": "a2", "tool": "type_text", "args": {"text": "hello"}},
         ]
+        # M13 §4.4: promotion now also requires that the ORIGINAL utterance stood
+        # on its own. The chat layer records that from the resolver before running.
+        self.coord.note_eligibility("open and type", True)
         self.coord._on_execution_completed(self.completed("run-1", "open and type", steps))
         self.coord._on_verified(self.verdict("run-1", "a1", "open and type"))
         self.assertNotIn("open and type", self.cache.rows)
@@ -111,6 +137,7 @@ class ExecutionCacheTests(unittest.TestCase):
 
     def test_out_of_order_verdicts_are_joined(self):
         steps = [{"action_id": "a1", "tool": "open_application", "args": {}}]
+        self.coord.note_eligibility("open app", True)
         self.coord._on_verified(self.verdict("run-2", "a1", "open app"))
         self.assertNotIn("open app", self.cache.rows)
         self.coord._on_execution_completed(self.completed("run-2", "open app", steps))

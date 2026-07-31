@@ -1,0 +1,13 @@
+{
+  "session_id": "cf8c2104-b6f0-44ab-b0a7-c1559fb66522",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Remember this is my favorite song on Youtube and whenever I tell you to play the song of like directly I will tell you to play the song or else I can say you play the my favorite song or play my favorite song on Youtube something like that phrase you understand now what I'm trying to say so you will do play this song I am giving you the Youtube link OK acknowledge me if you get it  https://youtu.be/8FGaeAhiSOY?si=vxc-oRAwO-N1sSYZ"
+    },
+    {
+      "role": "assistant",
+      "content": "I understand! I've saved your favorite YouTube song as \"8FGaeAhiSOY?si=vxc-oRAwO-N1sSYZ\". From now on, when you say \"play the song,\" \"play my favorite song,\" or \"play my favorite song on YouTube,\" I'll play this video for you."
+    }
+  ]
+}

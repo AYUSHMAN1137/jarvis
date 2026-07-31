@@ -1,0 +1,45 @@
+{
+  "session_id": "fb604095-c1c0-47f5-bf4e-78cf57983c3d",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Check my inbox"
+    },
+    {
+      "role": "assistant",
+      "content": "Here are your latest 5 inbox emails:\n1. From: REDMAGIC Team <news@redmagic.gg> | Subject: 🌡️ Please Don't Pour Liquid In Yours. | Date: Wed, 29 Jul 2026 12:15:05 +0000 | Preview: Ours is different. ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏ ͏\n2. From: The Gemini Program Team <info@geministudentambassador.com> | Subject: Action Required: Complete Your GSAP '26 Onboarding (Correct Form Link Inside) | Date: Wed, 29 Jul 2026 17:14:52 +0530 (IST) | Preview: We apologize for the technical snag! Please use the updated link below to submit your signed contract. Hey Ambassadors, You cleared the screening and killed the video round—now we just need to make it\n3. From: Paytm Postpaid <mail@info.paytm.com> | Subject: Waiting for your Salary? | Date: Wed, 29 Jul 2026 10:38:38 +0000 (UTC) | Preview: Get up to ₹60000 Credit with Postpaid — Activate now Paytm Postpaid Email #Paytmkaro\n4. From: Customer Support <cs@rmt.flipkart.com> | Subject: Update from Flipkart Customer Service for [Incident: IN26072916043869485862] | Date: Wed, 29 Jul 2026 10:36:01 +0000 | Preview: Flipkart.com Download APP DOWNLOAD APP TRACK ORDER CANCEL ORDER FREE &amp; EASY RETURNS CUSTOMER SUPPORT Dear Customer, We have escalated your issue to the concerned team. We assure you that we will\n5. From: Skyscanner <no-reply@sender.skyscanner.com> | Subject: Patna is coming up fast! | Date: Wed, 29 Jul 2026 09:42:24 +0000 (UTC) | Preview: Let&#39;s find you the best place to stay. ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏ ‌ ﻿ ͏"
+    },
+    {
+      "role": "user",
+      "content": "Can you tell me what's the email from Gemini programme?"
+    },
+    {
+      "role": "assistant",
+      "content": "The email from the Gemini Program Team has the subject: \"Action Required: Complete Your GSAP '26 Onboarding (Correct Form Link Inside)\". The preview says: \"We apologize for the technical snag! Please use the updated link below to submit your signed contract. Hey Ambassadors, You cleared the screening and killed the video round—now we just need to make it\"."
+    },
+    {
+      "role": "user",
+      "content": "Send me the link where I can complete that."
+    },
+    {
+      "role": "assistant",
+      "content": "I cannot directly extract the link from the email preview. You will need to open the email from \"The Gemini Program Team\" with the subject \"Action Required: Complete Your GSAP '26 Onboarding (Correct Form Link Inside)\" to get the link."
+    },
+    {
+      "role": "user",
+      "content": "Open the email exactly that page for me."
+    },
+    {
+      "role": "assistant",
+      "content": "I'm sorry, I can't directly open a specific email in your inbox. My `gmail_inbox` tool can only list and summarize your emails. You'll need to open your Gmail and find the email from \"The Gemini Program Team\" with the subject \"Action Required: Complete Your GSAP '26 Onboarding (Correct Form Link Inside)\" yourself."
+    },
+    {
+      "role": "user",
+      "content": "Open the inbox page."
+    },
+    {
+      "role": "assistant",
+      "content": "I have opened your Gmail inbox in the browser."
+    }
+  ]
+}

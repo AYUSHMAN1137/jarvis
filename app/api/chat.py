@@ -1,15 +1,25 @@
 """Chat routes: /chat, /chat/stream, /chat/realtime, /chat/realtime/stream,
-/chat/jarvis/stream, /chat/history/{session_id}."""
+/chat/jarvis/stream, and the conversation-history collection routes
+(GET/PATCH/DELETE /chat/history[/{session_id}])."""
 
 import logging
+from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 import app.core.state as state
 from app.core.helpers import RATE_LIMIT_MESSAGE, is_rate_limit_error
 from app.core.streaming import stream_generator
-from app.models import ChatRequest, ChatResponse
+from app.models import (
+    ChatRequest,
+    ChatResponse,
+    ConversationDetail,
+    ConversationList,
+    ConversationRenameRequest,
+    ConversationSummary,
+)
+from config import HISTORY_MAX_PAGE_SIZE, HISTORY_PAGE_SIZE, HISTORY_SEARCH_MAX_CHARS
 from app.services.groq_service import AllGroqApisFailedError
 
 logger = logging.getLogger("J.A.R.V.I.S")
@@ -175,21 +185,79 @@ async def chat_jarvis_stream(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/chat/history/{session_id}")
-async def get_chat_history(session_id: str):
+def _require_chat_service():
     if not state.chat_service:
         raise HTTPException(status_code=503, detail="Chat service not initialized")
+    return state.chat_service
 
-    if not state.chat_service.validate_session_id(session_id):
+
+def _require_valid_session_id(service, session_id: str) -> str:
+    if not service.validate_session_id(session_id):
         raise HTTPException(status_code=400, detail="Invalid session_id format")
+    return session_id
+
+
+@router.get("/chat/history", response_model=ConversationList)
+async def list_chat_history(
+    query: str = Query("", max_length=HISTORY_SEARCH_MAX_CHARS),
+    limit: int = Query(HISTORY_PAGE_SIZE, ge=1, le=HISTORY_MAX_PAGE_SIZE),
+    cursor: Optional[str] = Query(None, max_length=200),
+):
+    """Newest-first conversation summaries. Previews only -- never full transcripts."""
+    service = _require_chat_service()
+    try:
+        return service.list_conversations(query=query, limit=limit, cursor=cursor)
+    except Exception as e:
+        logger.error("[API /chat/history] List failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Could not load conversation history")
+
+
+@router.get("/chat/history/{session_id}", response_model=ConversationDetail)
+async def get_chat_history(session_id: str):
+    service = _require_chat_service()
+    _require_valid_session_id(service, session_id)
 
     try:
-        messages = state.chat_service.get_chat_history(session_id)
-        return {
-            "session_id": session_id,
-            "messages": [{"role": msg.role, "content": msg.content} for msg in messages]
-        }
-
+        conversation = service.get_conversation(session_id)
     except Exception as e:
-        logger.error(f"Error retrieving history: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error retrieving history: {str(e)}")
+        logger.error("[API /chat/history/{id}] Read failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Could not load conversation")
+
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return conversation
+
+
+@router.patch("/chat/history/{session_id}", response_model=ConversationSummary)
+async def rename_chat_history(session_id: str, request: ConversationRenameRequest):
+    service = _require_chat_service()
+    _require_valid_session_id(service, session_id)
+
+    try:
+        summary = service.rename_conversation(session_id, request.title)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("[API /chat/history/{id}] Rename failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Could not rename conversation")
+
+    if summary is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return summary
+
+
+@router.delete("/chat/history/{session_id}")
+async def delete_chat_history(session_id: str):
+    """Permanently deletes the conversation file. Not recoverable."""
+    service = _require_chat_service()
+    _require_valid_session_id(service, session_id)
+
+    try:
+        deleted = service.delete_conversation(session_id)
+    except Exception as e:
+        logger.error("[API /chat/history/{id}] Delete failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Could not delete conversation")
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"deleted": True, "session_id": session_id}

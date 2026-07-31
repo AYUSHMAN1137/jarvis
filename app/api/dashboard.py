@@ -6,7 +6,7 @@ from collections import deque
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from starlette.requests import Request
 
 import app.core.state as state
@@ -17,12 +17,34 @@ logger = logging.getLogger("J.A.R.V.I.S")
 router = APIRouter()
 _frontend_acks = deque(maxlen=100)
 
+_WEB_DIR = Path(__file__).resolve().parent.parent.parent / "web"
+
+
+@router.get("/jarvis/c/{session_id}")
+@router.get("/app/c/{session_id}")
+async def conversation_deep_link(session_id: str):
+    """Serve the app shell for a client-side conversation URL.
+
+    /jarvis/c/<session_id> is a frontend route, so a hard refresh or a pasted
+    link would otherwise 404 on the StaticFiles mount. Registered with the
+    routers (before the mounts in main.py) so it wins the match. index.html
+    carries a <base href> so its relative assets still resolve one level deeper.
+
+    session_id is never touched here -- it is not used to build a path, and the
+    frontend falls back to a fresh chat when the conversation does not exist.
+    """
+    index = _WEB_DIR / "index.html"
+    if not index.exists():
+        raise HTTPException(status_code=404, detail="UI not available")
+    return FileResponse(str(index), media_type="text/html")
+
 
 @router.post("/api/activity/frontend-ack")
 async def frontend_action_ack(request: Request):
     """Record that the browser attempted a server-dispatched frontend action.
 
     This is transport evidence only; it does not claim an external page loaded.
+    Section 7: frontend action acknowledgement path.
     """
     try:
         body = await request.json()
@@ -40,6 +62,14 @@ async def frontend_action_ack(request: Request):
         "error": str(body.get("error") or "")[:160],
     }
     _frontend_acks.append(row)
+    # Wire to Phase 4 coordinator for verification correlation
+    try:
+        from app.services.agent.checker import get_phase4
+        get_phase4().acknowledge_dispatch(
+            dispatch_id, attempted=row["attempted"],
+            accepted=row["accepted"], error=row["error"])
+    except Exception:  # noqa: BLE001 - fail-soft
+        pass
     logger.info("[FRONTEND-ACK] dispatch=%s action=%s attempted=%s accepted=%s%s",
                 dispatch_id[:12], action_id[:12], row["attempted"], row["accepted"],
                 (" error=" + row["error"]) if row["error"] else "")

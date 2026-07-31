@@ -35,7 +35,10 @@ from config import (
     GROQ_API_KEYS,
     AGENT_MODEL,
     AGENT_BASE_URL,
+    AGENT_MAX_OUTPUT_TOKENS,
     AGENT_MAX_STEPS,
+    AGENT_NO_OP_NUDGES,
+    AGENT_REASONING_EFFORT,
     AGENT_REQUEST_TIMEOUT,
     GEMINI_MODEL,
     GEMINI_REQUEST_TIMEOUT,
@@ -58,42 +61,58 @@ Rules:
 - Use tools to perform any real action. Do not pretend an action happened.
 - For desktop apps (notepad, calculator, chrome, settings, etc.) use open_application. For web addresses use open_website.
 - After a tool returns, read its result. If it starts with "ERROR", adapt: try a different tool or fix the arguments. Do not repeat the exact same failing call.
+- A very large result is saved to a file and replaced by its first lines plus the path. Those lines are usually all you need; call read_file with that exact path only if you genuinely need the rest.
 - When a step needs a window to be focused before typing, focus it first.
 - Keep going until the user's request is FULLY done, then give a short, natural, spoken-style final reply (1-2 sentences). No markdown, no emojis.
 - If the request is impossible with the available tools, say so briefly and honestly.
 - Be efficient: don't call tools that aren't needed.
 
 UI INTERACTION — CRITICAL:
-Opening an app or window is only step 1. If the user wants you to DO something inside that window (click a button, toggle a switch, type text, check a status), you MUST continue with the ui_* tools:
+Opening a window is only step 1. If the user wants something DONE inside it (press a button, flip a switch, type in a field, pick an option), you MUST carry on until that thing is actually done. Opening Settings is not "turning night light off".
 
-  1. open_application(...) to open the window.
-  2. ui_list_controls(window_title) to discover the buttons, toggles, and text fields inside it. This returns a list of control names and types.
-  3. ui_click(control_name, window_title) to click a button or menu item by its visible label.
-  4. ui_set_toggle(control_name, state, window_title) to turn a toggle/switch on or off.
-  5. ui_type_into(control_name, text, window_title) to type into a text field.
+Use ui_do for this. It is the main UI tool and it does the searching for you:
 
-Important details:
-- The control_name is the visible text label of the button or control, e.g. "Check for updates", "Add a device", "On/Off toggle".
-- If ui_click fails, call ui_list_controls again to see the exact names available, then retry with the correct name.
-- Windows Settings pages take 1-2 seconds to load after opening. If ui_list_controls returns few or no controls, wait a moment and try again.
-- NEVER stop after just opening a window if the user asked you to interact with something inside it. The task is not done until the button is clicked or the action inside the window is completed.
-- For Windows Settings deep links, you can open specific pages directly: open_application("ms-settings:windowsupdate"), open_application("ms-settings:bluetooth"), open_application("ms-settings:network-wifi"), etc.
+  ui_do(target="Night light", action="toggle", state=false, window="Settings")
+  ui_do(target="Check for updates", action="click", window="Settings")
+  ui_do(target="File name", action="type", text="poem.txt", window="Save as")
+
+ui_do reads the window, and if the control is not on screen yet it uses the window's own search box, opens the matching section, or scrolls — then acts and reports what it observed. You do not need to know where the control lives.
+
+Supporting tools:
+- ui_list_controls(window) — see exactly what is on screen with current on/off states. Use it to answer "what options are there", or to get real names after a failure.
+- ui_click / ui_set_toggle / ui_type_into — single-shot versions for a control you can already see.
+- ui_scroll(window, direction) — bring controls below the fold into reach.
+- ui_diagnostics() — use only if several UI actions fail in a row; it reports whether UI automation is alive and which windows exist.
+
+Rules that matter:
+- Read the result. It tells you the truth. "ERROR: ..." means it did NOT happen, and the message lists the control names that ARE present — use those names on your next attempt instead of guessing a new one.
+- Never claim a toggle changed unless the result says so. ui_do re-reads the control and will tell you if it did not take effect.
+- The window argument is a WINDOW TITLE, not a page name. Settings pages (Display, Bluetooth, Night light, Windows Update) all live in the window titled "Settings".
+- Settings deep links open the right page in one step: open_settings_page("night light"), open_settings_page("bluetooth"), open_settings_page("windows update").
+- If a window was just opened, give it a moment (ui_wait) before expecting content.
 
 BROWSER / WEB PAGE INTERACTION:
-When you open a web page (YouTube search, any website), the page loads in the user's browser. To interact with it:
-  1. Call play_on_youtube(query) or open_website(url) to open the page.
-  2. Wait ~3 seconds for the page to load.
-  3. Call ui_list_controls(window="Chrome") to see all clickable links and buttons on the page.
-  4. Find the right element (e.g. the first video title for YouTube) and call ui_click(element_name, window="Chrome").
-  5. If the browser is not Chrome, try "Edge", "Firefox", "Brave", or "Opera" as the window name.
+Web pages are just another window, so the same tools work:
+  1. open_website(url) or play_on_youtube(query) to load the page.
+  2. ui_wait(3) — pages need a few seconds.
+  3. ui_do(target="<the link or button text>", window="Chrome") to click it.
+     If the browser is not Chrome, try "Edge", "Firefox", "Brave" or "Opera".
+  4. If you do not know the exact text, ui_list_controls(window="Chrome") first.
 
 Example — "play Arijit Singh on YouTube":
-  Step 1: play_on_youtube("Arijit Singh") → opens search results page
-  Step 2: ui_list_controls(window="Chrome") → sees video links like "Tum Hi Ho - Arijit Singh", "Channa Mereya", etc.
-  Step 3: ui_click("Tum Hi Ho - Arijit Singh", window="Chrome") → video starts playing
-  Step 4: Reply "Playing Tum Hi Ho by Arijit Singh on YouTube, Sir."
+  play_on_youtube("Arijit Singh") → opens the results page
+  ui_wait(3)
+  ui_list_controls(window="Chrome") → shows the video links
+  ui_do(target="<first video title>", window="Chrome") → the video starts
+  Then reply briefly, naming what is playing.
 
-This same pattern works for ANY web interaction — clicking buttons, filling forms, navigating pages. Always: open → list controls → click."""
+Always: open → wait → act on a real control name → confirm from the result.
+
+PREFER A DIRECT TOOL OVER DRIVING A DIALOG:
+Some jobs have a tool that does them properly in one call. Use it instead of typing into GUI dialogs, which is slow and easy to get wrong.
+- To save text to a file, use write_file(path, content). For example write_file("desktop/poem.txt", "<the poem>"). It understands desktop/downloads/documents by name and puts the file in the user's own folder. Do NOT open Notepad, paste, press Ctrl+S and type a path — that is what fails.
+- To read a file use read_file, to make a folder use create_folder, to move or rename use move_path.
+- Drive the UI with ui_* only when there is no direct tool for the job."""
 
 
 @dataclass
@@ -105,10 +124,32 @@ class AgentResult:
     pending_confirmation: Optional[Dict[str, Any]] = None
 
 
+# M13 §3.3: the structural no-op gate. This is deliberately a control-flow rule
+# in code, not a line in the system prompt: a model that ignores prose (and they
+# do -- "Play ishq song." produced the final text "Done." with zero tool calls)
+# cannot ignore a branch that refuses to accept its answer.
+# Output budget for a one-sentence composed reply. Generous on purpose: the agent
+# model is a thinking model and draws its reasoning from the same budget, so a
+# tight cap produced truncated admissions like "I attempted" -- which reads as a
+# success claim, the exact failure this milestone removes.
+_COMPOSE_MAX_TOKENS = 800
+
+_NO_OP_NUDGE = (
+    "You did not call any tool, so nothing has happened yet and the user's "
+    "request is NOT done. You are not allowed to report success for an action "
+    "you did not perform. Either call the tool that actually performs it now, "
+    "or -- if it genuinely cannot be done with the tools you have -- say plainly "
+    "that you cannot do it and why. Do not say 'Done'."
+)
+
+
 class AgentLoop:
     def __init__(self) -> None:
         self._clients = self._build_clients()
         self.last_provider_event = None
+        # Set to False the first time an endpoint rejects `reasoning_effort`, so a
+        # model that does not accept it can never cause a total outage.
+        self._reasoning_effort = AGENT_REASONING_EFFORT or ""
         # Phase 3: last-built context registry (live system state + recent
         # results). Tools can read it to resolve references like "this/isko".
         # Rebuilt on every run; None until the first message is processed.
@@ -162,6 +203,24 @@ class AgentLoop:
     # deterministic):
     #   1) PRIMARY  : Gemini 2.5 Flash (best tool-calling)
     #   2) FALLBACK : gpt-oss via Groq
+    @staticmethod
+    def _is_usable(completion) -> bool:
+        """A completion with neither text nor a tool call is not a decision.
+
+        A reasoning model that spends its whole output budget thinking returns an
+        empty message. Accepting that as the model's final answer is how a turn
+        ends up reporting nothing, or "Done.", having done nothing -- seen live on
+        "what's my battery level", where Gemini returned content='' and no tool
+        calls twice in a row. It is a provider failure, so it fails over.
+        """
+        try:
+            message = completion.choices[0].message
+        except Exception:  # noqa: BLE001
+            return False
+        if getattr(message, "tool_calls", None):
+            return True
+        return bool((getattr(message, "content", None) or "").strip())
+
     def _chat_completion(self, messages: List[Dict[str, Any]], key_index: int):
         tools = registry.openai_schemas()
 
@@ -193,7 +252,7 @@ class AgentLoop:
                     tools=tools,
                     tool_choice="auto",
                     temperature=0.3,
-                    max_tokens=1024,
+                    max_tokens=AGENT_MAX_OUTPUT_TOKENS,
                     timeout=ZAI_REQUEST_TIMEOUT,
                 )
                 monitor.record_provider_success("zai", operation="agent_chat", source="agent_loop")
@@ -228,9 +287,18 @@ class AgentLoop:
                     tools=tools,
                     tool_choice="auto",
                     temperature=0.3,
-                    max_tokens=1024,
+                    max_tokens=AGENT_MAX_OUTPUT_TOKENS,
                     timeout=AGENT_REQUEST_TIMEOUT,
                 )
+                if not self._is_usable(completion):
+                    monitor.record_groq_failure(
+                        i, operation="agent_chat", source="agent_loop",
+                        error="empty completion (no text, no tool call)",
+                        is_rate_limit=False,
+                        latency_ms=int((time.perf_counter() - t0) * 1000))
+                    logger.warning("[AGENT] Groq key #%d returned an empty "
+                                   "completion -- treating as a failure", i)
+                    continue
                 monitor.record_groq_success(i, operation="agent_chat", source="agent_loop", latency_ms=int((time.perf_counter() - t0) * 1000))
                 self._set_provider_event("groq", i, failover=(groq_is_failover or j > 0))
                 return completion
@@ -249,6 +317,22 @@ class AgentLoop:
                     or ("400" in str(e) and "tool" in msg)
                 )
                 monitor.record_groq_failure(i, operation="agent_chat", source="agent_loop", error=str(e), is_rate_limit=is_rl, latency_ms=int((time.perf_counter() - t0) * 1000))
+                # "Request too large ... on tokens per minute (TPM): Limit N,
+                # Requested M" with M > N is not transient and not key-specific:
+                # the request cannot fit in ANY key's per-minute allowance, so
+                # every remaining key will return the identical 413. Measured
+                # live: 8 keys, 8 identical failures, ~2s wasted.
+                # The agent payload is dominated by the tool schemas (~42 KB for
+                # 95 tools), so on Groq's free tier the agent fallback simply
+                # cannot be used -- say so once, clearly, instead of retrying.
+                if "413" in str(e) and "tokens per minute" in msg:
+                    logger.error(
+                        "[AGENT] Groq cannot serve the agent: the request "
+                        "(%d tools) exceeds this account's per-minute token "
+                        "allowance. Gemini is the only usable agent provider "
+                        "until the Groq tier is raised. %s",
+                        len(tools or []), str(e)[:200])
+                    break
                 if is_tool_validation:
                     logger.warning("[AGENT] Groq key #%d: malformed tool call from model -> failing over to Gemini immediately", i)
                     break
@@ -272,20 +356,47 @@ class AgentLoop:
             monitor.record_gemini_attempt(idx, operation="agent_chat", source="agent_loop")
             t0 = time.perf_counter()
             try:
+                extra = {}
+                if self._reasoning_effort:
+                    extra["reasoning_effort"] = self._reasoning_effort
                 completion = self._gemini_clients[idx].chat.completions.create(
                     model=GEMINI_MODEL,
                     messages=messages,
                     tools=tools,
                     tool_choice="auto",
                     temperature=0.3,
-                    max_tokens=1024,
+                    max_tokens=AGENT_MAX_OUTPUT_TOKENS,
                     timeout=GEMINI_REQUEST_TIMEOUT,
+                    **extra,
                 )
+                if not self._is_usable(completion):
+                    monitor.record_gemini_failure(
+                        idx, operation="agent_chat", source="agent_loop",
+                        error="empty completion (no text, no tool call)",
+                        is_rate_limit=False,
+                        latency_ms=int((time.perf_counter() - t0) * 1000))
+                    logger.warning("[AGENT] Gemini key #%d returned an empty "
+                                   "completion -- treating as a failure", idx + 1)
+                    continue
                 monitor.record_gemini_success(idx, operation="agent_chat", source="agent_loop", latency_ms=int((time.perf_counter() - t0) * 1000))
                 self._set_provider_event("gemini", idx, failover=failover)
                 logger.info("[AGENT] Gemini %s completion on key #%d", "fallback" if failover else "primary", idx + 1)
                 return completion
             except Exception as e:  # noqa: BLE001
+                # An endpoint that does not know `reasoning_effort` would reject
+                # every key identically, so drop the parameter and retry this key
+                # rather than failing the whole run over an optional hint.
+                # An endpoint that does not know `reasoning_effort` rejects every
+                # key identically, so drop the parameter for the rest of this
+                # process and carry on down the key list, rather than failing the
+                # whole run over an optional hint. The key is not tripped: it is
+                # the request that was wrong, not the credential.
+                if self._reasoning_effort and "reasoning_effort" in str(e).lower():
+                    logger.warning("[AGENT] endpoint rejected reasoning_effort=%r "
+                                   "-- dropping it for this process",
+                                   self._reasoning_effort)
+                    self._reasoning_effort = ""
+                    continue
                 monitor.record_gemini_failure(idx, operation="agent_chat", source="agent_loop", error=str(e), is_rate_limit=llm_providers.is_rate_limit_error(e), latency_ms=int((time.perf_counter() - t0) * 1000))
                 llm_providers.trip(idx)
                 logger.warning("[AGENT] Gemini key #%d failed: %s", idx + 1, str(e)[:120])
@@ -428,12 +539,18 @@ class AgentLoop:
         chat_history: Optional[List[tuple]] = None,
         key_index: int = 0,
         confirmed_tools: Optional[List[str]] = None,
+        expect_action: bool = False,
     ) -> Iterator[Dict[str, Any]]:
         """Yields event dicts:
           {"_activity": {...}}           progress for the UI
           {"_actions": {...}}            frontend actions (open/play/image/...)
           {"_confirm": {...}}            dangerous action awaiting confirmation
+          {"_executed": [...]}           the actions this run really performed
           {"_final": "text"}             final spoken answer
+
+        `expect_action=True` marks this run as one the user expects to CHANGE
+        something. A final message with zero tool calls is then rejected instead
+        of being recorded as success (M13 §3.3).
         """
         action_sink.reset()
         confirmed = set(confirmed_tools or [])
@@ -455,6 +572,7 @@ class AgentLoop:
         # --- DEBUG LOGGER: agent loop is running (session already started by chat_service) ---
         dbg.ensure_session(session_id="agent_direct", user_message=user_message)
         dbg.info("AGENT", f"run_stream started | max_steps={AGENT_MAX_STEPS} | tools={len(registry.names())}")
+        dbg.tool_catalog(registry.names())
         dbg.execution_event("started", execution_id, {"command": user_message[:200]})
 
         yield {"_activity": {"event": "agent_started", "tools": len(registry.names())}}
@@ -463,7 +581,14 @@ class AgentLoop:
 
         final_text = ""
         last_provider_sig = None
-        for step in range(1, AGENT_MAX_STEPS + 1):
+        # A nudge is not a real step, so it gets its own budget rather than
+        # eating one of AGENT_MAX_STEPS.
+        step = 0
+        step_budget = AGENT_MAX_STEPS
+        nudges_left = max(0, int(AGENT_NO_OP_NUDGES)) if expect_action else 0
+        exhausted = True
+        while step < step_budget:
+            step += 1
             try:
                 dbg.llm_call("gemini/groq", "auto", step=step)
                 completion = self._chat_completion(messages, key_index)
@@ -471,6 +596,7 @@ class AgentLoop:
                 logger.error("[AGENT] LLM call failed: %s", e)
                 dbg.error("AGENT", f"LLM call failed at step {step}: {e}")
                 final_text = "I ran into a problem reaching my reasoning engine. Please try again."
+                exhausted = False
                 break
 
             # Surface which provider/key answered (only when it changes).
@@ -486,14 +612,43 @@ class AgentLoop:
             tool_calls = self._parse_tool_calls(message)
 
             if not tool_calls:
-                final_text = (message.content or "").strip() or "Done."
+                said = (message.content or "").strip()
                 dbg.llm_response("llm", has_tool_calls=False, step=step)
+                # --- M13 §3.3: reject the silent no-op ---
+                if expect_action and not executed_steps:
+                    if nudges_left > 0:
+                        nudges_left -= 1
+                        step_budget += 1  # the nudge is free
+                        messages.append({"role": "assistant", "content": said})
+                        messages.append({"role": "system", "content": _NO_OP_NUDGE})
+                        dbg.info("AGENT", "NO-OP REJECTED -- nudging", {
+                            "said": said[:160], "step": step,
+                        })
+                        logger.warning(
+                            "[AGENT] action turn produced no tool call (%r) -- nudging",
+                            said[:80])
+                        yield {"_activity": {"event": "no_op_rejected",
+                                             "said": said[:120],
+                                             "message": "nothing was executed -- retrying"}}
+                        continue
+                    # Nudged and it still refused to act. Say so; never "Done."
+                    final_text = self._no_op_admission(user_message, said)
+                    dbg.info("AGENT", "NO-OP ADMITTED", {"final": final_text[:160]})
+                    logger.warning("[AGENT] action turn executed nothing -- admitting")
+                    exhausted = False
+                    break
+                final_text = said or "Done."
                 dbg.info("AGENT", f"Final answer: {final_text[:200]}")
+                exhausted = False
                 break
 
             # Log what the LLM decided to call
             tool_names = [tc[1] for tc in tool_calls]
             dbg.llm_response("llm", has_tool_calls=True, tool_names=tool_names, step=step)
+            # Any prose the model emitted alongside the tool calls explains its
+            # reasoning -- essential when it picks the wrong tool.
+            if (message.content or "").strip():
+                dbg.llm_text(message.content, step=step)
 
             # Append the assistant's tool-call message before adding results.
             messages.append(self._assistant_msg_with_calls(message))
@@ -543,23 +698,39 @@ class AgentLoop:
                                      "tool": name,
                                      "ok": obs_ok,
                                      "preview": observation[:120]}}
+                # M13 §3.2: emit exactly THIS action's browser payload. The sink
+                # was drained inside execute_action, so each emission is disjoint
+                # and carries its own dispatch_id -- previously step 2 re-emitted
+                # step 1's URL (opening the same tab twice) and only the last
+                # action of a run could ever be acknowledged.
+                if action_sink.bucket_has_actions(action_result.frontend_actions):
+                    yield {"_actions": dict(action_result.frontend_actions)}
+                # An oversized result is written to disk and replaced by a short
+                # pointer. It stays in `observation` for the registry, the
+                # activity feed and verification above -- only the copy the
+                # model has to re-read on every later step is trimmed.
+                try:
+                    from app.services.agent import tool_result_store
+                    content = tool_result_store.maybe_offload(
+                        name, observation,
+                        execution_id=execution_context.execution_id,
+                        action_id=action_id)
+                except Exception:  # noqa: BLE001 - never lose a tool result
+                    content = observation
                 messages.append({
                     "role": "tool",
                     "tool_call_id": call_id,
-                    "content": observation,
+                    "content": content,
                 })
 
-            # Emit any frontend actions accumulated so far as soon as we have them.
-            if action_sink.has_actions():
-                yield {"_actions": action_sink.collect()}
-
-        else:
+        if exhausted:
             # Loop exhausted without a final message.
             final_text = "I've done as much as I can on that. Let me know if you'd like more."
 
-        # Final flush of actions (in case the last step produced some).
+        # Safety net: a tool that pushed to the sink outside the coordinator path
+        # would otherwise be silently dropped now that draining is per-action.
         if action_sink.has_actions():
-            yield {"_actions": action_sink.collect()}
+            yield {"_actions": action_sink.collect(drain=True)}
 
         # Cache learning happens at execution level, never from an isolated tool
         # event. Verification is asynchronous, so Phase 6 joins this manifest to
@@ -580,4 +751,106 @@ class AgentLoop:
 
         dbg.session_end(final_response=final_text)
         yield {"_activity": {"event": "agent_done", "steps": step}}
+        # What this run actually did, so the chat layer can wait for the verdicts
+        # of exactly these actions before it says anything (M13 §3.4).
+        yield {"_executed": {"execution_id": execution_id,
+                             "steps": list(executed_steps)}}
         yield {"_final": final_text}
+
+    # -- honest wording, generated rather than templated ------------------ #
+    def _compose(self, instruction: str, fallback: str) -> str:
+        """Ask the LLM for one short spoken sentence. Falls back to plain words.
+
+        Used wherever JARVIS has to admit a limit or ask for a missing detail. The
+        wording is generated so it fits the request instead of reading like a
+        canned string, but the fallback keeps it honest when no provider answers.
+
+        A truncated admission is worse than a templated one -- "I attempted" is
+        not a sentence, and it reads as a success claim. So the budget is generous,
+        thinking is off (the same reasoning-model trap as the main loop), and a
+        `finish_reason == "length"` reply is rejected rather than shipped.
+        """
+        messages = [
+            {"role": "system",
+             "content": ("You are J.A.R.V.I.S. Reply with ONE short, COMPLETE "
+                         "spoken sentence. No markdown, no emojis, no preamble, "
+                         "no line breaks. Be honest and specific. Never claim "
+                         "anything worked.")},
+            {"role": "user", "content": instruction},
+        ]
+        for client, model, timeout, extra in self._plain_clients():
+            try:
+                completion = client.chat.completions.create(
+                    model=model, messages=messages, temperature=0.3,
+                    max_tokens=_COMPOSE_MAX_TOKENS, timeout=timeout, **extra,
+                )
+                choice = completion.choices[0]
+                text = " ".join((choice.message.content or "").split()).strip()
+                if not text:
+                    logger.debug("[AGENT] compose returned nothing on %s", model)
+                    continue
+                truncated = (
+                    str(getattr(choice, "finish_reason", "")).lower() == "length"
+                    # Belt and braces: the Gemini compat layer has been seen to
+                    # report finish_reason="stop" on a reply cut short by thinking.
+                    # A two-word "sentence" is not usable either way.
+                    or len(text.split()) < 4
+                )
+                if truncated:
+                    logger.warning("[AGENT] compose truncated on %s (%r) -- "
+                                   "using plain wording instead", model, text[:60])
+                    continue
+                return text
+            except Exception as e:  # noqa: BLE001
+                logger.debug("[AGENT] compose failed on %s: %s", model, str(e)[:100])
+                continue
+        return fallback
+
+    def _plain_clients(self):
+        """(client, model, timeout, extra_kwargs) tuples for tool-free completions."""
+        out = []
+        gemini_extra = ({"reasoning_effort": self._reasoning_effort}
+                        if getattr(self, "_reasoning_effort", "") else {})
+        for client in self._gemini_clients[:1]:
+            out.append((client, GEMINI_MODEL, GEMINI_REQUEST_TIMEOUT, gemini_extra))
+        for client in self._clients[:1]:
+            out.append((client, AGENT_MODEL, AGENT_REQUEST_TIMEOUT, {}))
+        return out
+
+    def _no_op_admission(self, goal: str, said: str) -> str:
+        return self._compose(
+            "The user asked: \"" + str(goal)[:300] + "\"\n"
+            "You called no tool at all, so nothing was performed. "
+            + (f"You had drafted this reply, which would have been untrue: \"{said[:200]}\".\n"
+               if said else "")
+            + "Tell the user in one sentence that you did not manage to do it and "
+              "that nothing was changed. Do not apologise more than once. Do not "
+              "say 'Done'.",
+            "I wasn't able to carry that out — nothing was changed. "
+            "Tell me a bit more and I'll try again.",
+        )
+
+    def compose_unconfirmed(self, goal: str, draft: str,
+                            verdicts: List[Dict[str, Any]]) -> str:
+        """Rewrite a draft reply so it states the limit of what was confirmed.
+
+        `verdicts` is a list of {tool, verdict, reason} for the actions this turn
+        ran. This is what stops "Opening YouTube for you, Sir" from being said
+        when the browser never acknowledged anything.
+        """
+        lines = []
+        for v in verdicts[:4]:
+            reason = str(v.get("reason") or "").strip()
+            lines.append(f"- {v.get('tool')}: {v.get('verdict')}"
+                         + (f" ({reason})" if reason else ""))
+        return self._compose(
+            "The user asked: \"" + str(goal)[:300] + "\"\n"
+            "You were about to say: \"" + str(draft)[:300] + "\"\n"
+            "Verification of what you actually did came back as:\n"
+            + "\n".join(lines) + "\n"
+            "Rewrite your reply in one sentence so it is true: say what you did, "
+            "and say plainly that you could not confirm it took effect (or that "
+            "it failed, if it failed). Never claim it worked.",
+            (str(draft).rstrip(". ") + ". I could not confirm it actually took effect, though.")
+            if draft else "I ran that, but I could not confirm it actually took effect.",
+        )

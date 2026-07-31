@@ -1,0 +1,13 @@
+{
+  "session_id": "8b6611d3-834a-4ff3-a55f-16f912b98d2b",
+  "messages": [
+    {
+      "role": "user",
+      "content": "I'm going to go to the next one."
+    },
+    {
+      "role": "assistant",
+      "content": "Alright, let me know what you’d like to see next."
+    }
+  ]
+}

@@ -17,7 +17,7 @@ from app.services.vector_store import VectorStoreService
 from app.services.groq_service import GroqService
 from app.services.realtime_service import RealtimeGroqService
 from app.services.chat_service import ChatService
-from app.services.brain_service import BrainService
+from app.services.resolver import get_resolver
 from app.services.vision_service import VisionService
 from app.services.agent.agent_loop import AgentLoop
 from app.services.agent.tools import load_all_tools
@@ -107,9 +107,9 @@ async def lifespan(app: FastAPI):
         _t = time.perf_counter()
         state.groq_service = GroqService(state.vector_store_service)
         state.realtime_service = RealtimeGroqService(state.vector_store_service)
-        state.brain_service = BrainService(groq_service=state.groq_service)
+        state.resolver = get_resolver()
         state.vision_service = VisionService()
-        logger.info("[STARTUP] 3/5 LLM services (Groq + Realtime + Brain + Vision) ready in %.2fs", time.perf_counter() - _t)
+        logger.info("[STARTUP] 3/5 LLM services (Groq + Realtime + Resolver + Vision) ready in %.2fs", time.perf_counter() - _t)
 
         _t = time.perf_counter()
         agent_deps.configure(
@@ -138,6 +138,21 @@ async def lifespan(app: FastAPI):
             get_phase5().start()
         except Exception as _p5e:  # noqa: BLE001
             logger.warning("[STARTUP] Phase 5 could not start (non-fatal): %s", _p5e)
+
+        # UI automation: start the dedicated COM apartment and build the UIA
+        # backend now. Importing pywinauto and creating the UIA Desktop costs a
+        # few seconds once; paying it here means the first UI command the user
+        # gives is fast instead of looking like a hang. Fail-soft: if this does
+        # not come up, the ui_* tools report honestly that they are unavailable.
+        try:
+            from app.services.agent.automation import get_uia_engine
+            from app.services.agent.automation.ui_thread import get_ui_thread
+            get_ui_thread().start()
+            _warm = get_uia_engine().warmup()
+            logger.info("[STARTUP] UI automation %s.",
+                        "ready" if _warm.get("ok") else "unavailable")
+        except Exception as _uiae:  # noqa: BLE001
+            logger.warning("[STARTUP] UI automation warmup skipped (non-fatal): %s", _uiae)
 
         # Phase 6: start the verified-command cache (promote on Checker PASS,
         # evict on FAIL, fail-soft). PHASE6_ENABLED=False makes JARVIS behave
@@ -176,9 +191,55 @@ async def lifespan(app: FastAPI):
         except Exception as _p8e:  # noqa: BLE001
             logger.warning("[STARTUP] Phase 8 could not start (non-fatal): %s", _p8e)
 
+        # File index for find_file. Built on a background thread so it never
+        # delays boot, and refreshed lazily on search -- deliberately not a
+        # second poller.
+        try:
+            from app.services.agent.file_index import get_file_index
+            _index = get_file_index()
+            if _index.enabled and _index.is_stale():
+                _index.build_async()
+                logger.info("[STARTUP] File index refreshing in the background.")
+            else:
+                logger.info("[STARTUP] File index ready (%d files).", _index.count())
+        except Exception as _fie:  # noqa: BLE001
+            logger.warning("[STARTUP] File index skipped (non-fatal): %s", _fie)
+
+        # Housekeeping: prune re-creatable artefacts and snapshot the databases.
+        # Runs after every phase is up so all five databases exist, and before
+        # the chat service so it can never collide with a live request.
+        try:
+            from app.services.maintenance import run_startup_maintenance
+            run_startup_maintenance()
+        except Exception as _mte:  # noqa: BLE001
+            logger.warning("[STARTUP] Maintenance skipped (non-fatal): %s", _mte)
+
+        # M8: Reminder scheduler — start the heapq-based background thread
+        # that fires reminders when they're due. Fail-soft.
+        try:
+            from app.services.reminder_service import get_reminder_service
+            from app.api.reminders import on_reminder_fire
+            _reminder_svc = get_reminder_service()
+            _reminder_svc.recover_stuck()  # re-fire anything stuck from a crash
+            _reminder_svc.start(on_fire=on_reminder_fire)
+            logger.info("[STARTUP] Reminder scheduler started (%d active).",
+                        len(_reminder_svc._heap))
+        except Exception as _rse:  # noqa: BLE001
+            logger.warning("[STARTUP] Reminder scheduler could not start (non-fatal): %s", _rse)
+
+        # Notes & To-Do service — warm up the database.
+        try:
+            from app.services.notes_service import get_notes_service
+            _notes_svc = get_notes_service()
+            _stats = _notes_svc.get_stats()
+            logger.info("[STARTUP] Notes service ready (%d notes, %d to-do lists).",
+                        _stats['notes'], _stats['todo_lists'])
+        except Exception as _nse:  # noqa: BLE001
+            logger.warning("[STARTUP] Notes service could not start (non-fatal): %s", _nse)
+
         _t = time.perf_counter()
         state.chat_service = ChatService(
-            state.groq_service, state.realtime_service, state.brain_service,
+            state.groq_service, state.realtime_service,
             vision_service=state.vision_service,
             agent_loop=state.agent_loop,
         )
@@ -200,6 +261,13 @@ async def lifespan(app: FastAPI):
 
         logger.info("\nShutting down J.A.R.V.I.S...")
         tts_pool.shutdown(wait=True)
+
+        # Stop the reminder scheduler before closing databases
+        try:
+            from app.services.reminder_service import get_reminder_service
+            get_reminder_service().stop()
+        except Exception as _rse:  # noqa: BLE001
+            logger.debug("[SHUTDOWN] Reminder scheduler stop error: %s", _rse)
 
         try:
             from app.services.watcher import get_watcher
@@ -240,6 +308,17 @@ async def lifespan(app: FastAPI):
         if state.chat_service:
             for session_id in list(state.chat_service.sessions.keys()):
                 state.chat_service.save_chat_session(session_id)
+
+        # Last step, after every phase has stopped writing: merge each WAL back
+        # into its database and close the connection. Without this SQLite leaves
+        # the -wal/-shm files behind, the log grows forever, and every later read
+        # has to scan it. Must run after the phases stop, or a background thread
+        # can reopen a connection we just closed.
+        try:
+            from app.services.db import checkpoint_and_close_all
+            checkpoint_and_close_all()
+        except Exception as _dbe:  # noqa: BLE001
+            logger.debug("[SHUTDOWN] Database checkpoint error: %s", _dbe)
 
         logger.info("All sessions saved. Goodbye!")
 

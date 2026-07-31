@@ -1,67 +1,102 @@
 """Quick validation of Stage 1 execution models."""
 import sys
+import unittest
 sys.path.insert(0, ".")
 
 from app.services.agent.execution.models import (
     ExecutionContext, ActionSpec, ActionResult,
     VerificationResult, ExecutionManifest,
-    ExecutionSource, ExecutionStatus, Verdict, RiskLevel,
-    make_event, SCHEMA_VERSION,
+    ConfirmationGrant, event_envelope, SCHEMA_VERSION,
 )
 
-# Basic construction
-ec = ExecutionContext(user_message="open chrome", session_id="s1")
-assert ec.execution_id, "execution_id should be auto-generated"
-assert ec.source == ExecutionSource.AGENT
 
-spec = ActionSpec(tool="open_application", args={"app": "chrome"}, index=0)
-assert spec.action_id
-assert spec.risk_level == RiskLevel.SAFE
+class TestExecutionModels(unittest.TestCase):
 
-result = ActionResult(
-    execution_id=ec.execution_id,
-    action_id=spec.action_id,
-    tool="open_application",
-    transport_ok=True,
-    observation="Opened Chrome",
-    started_at=1000.0,
-    finished_at=1001.5,
-)
-assert result.duration_ms == 1500.0
+    def test_execution_context_auto_ids(self):
+        ec = ExecutionContext(user_message="open chrome", source="agent", session_id="s1")
+        self.assertTrue(ec.execution_id, "execution_id should be auto-generated")
+        self.assertEqual(ec.source, "agent")
+        self.assertEqual(ec.schema_version, SCHEMA_VERSION)
 
-vr = VerificationResult(
-    execution_id=ec.execution_id,
-    action_id=spec.action_id,
-    verdict=Verdict.PASS,
-    reason="process found",
-    source="state_checker",
-)
+    def test_action_spec_defaults(self):
+        spec = ActionSpec(tool="open_application", args={"app": "chrome"}, index=1)
+        self.assertTrue(spec.action_id)
+        self.assertEqual(spec.risk_level, "safe")
+        self.assertFalse(spec.requires_confirmation)
+        self.assertFalse(spec.verification_barrier)
 
-manifest = ExecutionManifest(
-    execution_id=ec.execution_id,
-    user_message="open chrome",
-    source=ExecutionSource.AGENT,
-    actions=[spec],
-    results=[result],
-    verifications=[vr],
-)
-assert manifest.all_transport_ok
-assert manifest.all_verified_pass
-assert not manifest.has_unknown
-assert not manifest.has_fail
+    def test_action_result_transport(self):
+        result = ActionResult(
+            execution_id="ex1", action_id="a1",
+            tool="open_application", args={"app": "chrome"},
+            transport_ok=True, observation="Opened Chrome",
+            started_at=1000.0, finished_at=1001.5,
+        )
+        self.assertTrue(result.transport_ok)
+        d = result.to_dict()
+        self.assertEqual(d["tool"], "open_application")
 
-# Serialization
-d = manifest.to_dict()
-assert d["schema_version"] == SCHEMA_VERSION
-assert d["source"] == "agent"
-assert d["status"] == "pending"
-assert len(d["actions"]) == 1
-assert d["actions"][0]["risk_level"] == "safe"
+    def test_verification_result(self):
+        vr = VerificationResult(
+            execution_id="ex1", action_id="a1",
+            verdict="PASS", reason="process found",
+            source="watcher", confidence=0.95,
+        )
+        self.assertTrue(vr.is_pass)
+        self.assertFalse(vr.is_fail)
 
-# Event envelope
-evt = make_event("execution.completed", ec.execution_id, spec.action_id, {"ok": True})
-assert evt["event_type"] == "execution.completed"
-assert evt["schema_version"] == SCHEMA_VERSION
-assert evt["execution_id"] == ec.execution_id
+    def test_execution_manifest_ok(self):
+        ctx = ExecutionContext(user_message="test", source="agent")
+        spec = ActionSpec(tool="set_volume", args={"level": 50})
+        result = ActionResult(
+            execution_id=ctx.execution_id, action_id=spec.action_id,
+            tool="set_volume", args={"level": 50},
+            transport_ok=True, observation="Done",
+            started_at=1.0, finished_at=2.0,
+        )
+        manifest = ExecutionManifest(
+            context=ctx, actions=[spec], results=[result],
+            status="completed",
+        )
+        self.assertTrue(manifest.ok)
+        payloads = manifest.step_payloads()
+        self.assertEqual(len(payloads), 1)
+        self.assertEqual(payloads[0]["tool"], "set_volume")
 
-print("ALL STAGE 1 MODEL CHECKS PASSED")
+    def test_manifest_not_ok_on_failure(self):
+        ctx = ExecutionContext(user_message="test", source="agent")
+        spec = ActionSpec(tool="set_volume", args={"level": 50})
+        result = ActionResult(
+            execution_id=ctx.execution_id, action_id=spec.action_id,
+            tool="set_volume", args={"level": 50},
+            transport_ok=False, observation="ERROR: failed",
+            started_at=1.0, finished_at=2.0,
+        )
+        manifest = ExecutionManifest(
+            context=ctx, actions=[spec], results=[result],
+            status="failed",
+        )
+        self.assertFalse(manifest.ok)
+
+    def test_confirmation_grant_validation(self):
+        import time
+        grant = ConfirmationGrant(
+            action_id="a1", tool="shutdown",
+            args_hash="abc123", expires_at=time.time() + 60,
+        )
+        self.assertTrue(grant.valid("a1", "shutdown", "abc123"))
+        self.assertFalse(grant.valid("a2", "shutdown", "abc123"))
+        self.assertFalse(grant.valid("a1", "restart", "abc123"))
+
+    def test_event_envelope(self):
+        evt = event_envelope("execution.completed", "ex1", "a1", ok=True)
+        self.assertEqual(evt["event_type"], "execution.completed")
+        self.assertEqual(evt["schema_version"], SCHEMA_VERSION)
+        self.assertEqual(evt["execution_id"], "ex1")
+        self.assertTrue(evt["ok"])
+        self.assertIn("event_id", evt)
+        self.assertIn("occurred_at", evt)
+
+
+if __name__ == "__main__":
+    unittest.main()

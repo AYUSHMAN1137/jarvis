@@ -37,7 +37,7 @@ from __future__ import annotations
 import logging
 import queue
 import threading
-from typing import Any, Callable, Dict, Tuple, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
 
 logger = logging.getLogger("J.A.R.V.I.S")
 
@@ -207,3 +207,97 @@ def read_volume() -> Tuple[int, bool]:
     level, muted = _run_on_com(_read)
     _update_cache(level=level, muted=muted)
     return level, muted
+
+
+# --------------------------------------------------------------------------- #
+# per-application volume
+# --------------------------------------------------------------------------- #
+# Same apartment as the master volume: every pycaw pointer must be created,
+# used and released on this one thread. The `_v` argument is the endpoint volume
+# the worker always builds -- session work does not need it, but riding the same
+# job queue is what keeps all audio COM on a single owning thread.
+def _session_label(session) -> str:
+    """Best available human name for an audio session.
+
+    The process name is preferred: DisplayName is often an unresolved resource
+    reference like "@%SystemRoot%\\System32\\AudioSrv.Dll,-202", which is no use
+    to the user or to substring matching.
+    """
+    try:
+        process = session.Process
+        if process is not None:
+            name = (process.name() or "").strip()
+            if name:
+                return name
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        display = (session.DisplayName or "").strip()
+        if display and not display.startswith("@"):
+            return display
+    except Exception:  # noqa: BLE001
+        pass
+    # A session with no process is the Windows system-sounds channel.
+    return "System Sounds"
+
+
+def list_app_sessions() -> List[Dict[str, Any]]:
+    """Return [{name, volume, muted}] for every app currently using audio."""
+    def _list(_v):
+        from pycaw.pycaw import AudioUtilities, ISimpleAudioVolume
+        out: List[Dict[str, Any]] = []
+        for session in AudioUtilities.GetAllSessions():
+            label = _session_label(session)
+            if not label:
+                continue
+            try:
+                simple = session._ctl.QueryInterface(ISimpleAudioVolume)
+                out.append({
+                    "name": label,
+                    "volume": int(round(simple.GetMasterVolume() * 100)),
+                    "muted": bool(simple.GetMute()),
+                })
+            except Exception:  # noqa: BLE001 - a session can vanish mid-iteration
+                continue
+        return out
+
+    return _run_on_com(_list)
+
+
+def set_app_volume(app: str, level_0_100: float = None,
+                   mute: bool = None) -> Optional[Dict[str, Any]]:
+    """Set volume and/or mute for one app. Returns its new state, or None.
+
+    Matching is a case-insensitive substring on the session name, so "spotify"
+    finds "Spotify.exe". Returns None when nothing matched, so the caller can
+    report which apps *are* playing instead of failing blankly.
+    """
+    target = (app or "").strip().lower()
+    if not target:
+        return None
+    scalar = None
+    if level_0_100 is not None:
+        scalar = max(0.0, min(1.0, float(level_0_100) / 100.0))
+
+    def _apply(_v):
+        from pycaw.pycaw import AudioUtilities, ISimpleAudioVolume
+        for session in AudioUtilities.GetAllSessions():
+            label = _session_label(session)
+            if not label or target not in label.lower():
+                continue
+            try:
+                simple = session._ctl.QueryInterface(ISimpleAudioVolume)
+                if scalar is not None:
+                    simple.SetMasterVolume(scalar, None)
+                if mute is not None:
+                    simple.SetMute(1 if mute else 0, None)
+                # Read back so the caller reports what is actually set, not what
+                # was requested.
+                return {"name": label,
+                        "volume": int(round(simple.GetMasterVolume() * 100)),
+                        "muted": bool(simple.GetMute())}
+            except Exception:  # noqa: BLE001
+                continue
+        return None
+
+    return _run_on_com(_apply)

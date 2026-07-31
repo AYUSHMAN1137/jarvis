@@ -18,7 +18,14 @@ GOOGLE_TOKEN_PATH = Path(os.getenv("GOOGLE_TOKEN_FILE", str(BASE_DIR / "data" / 
 LEGACY_GMAIL_TOKEN_PATH = BASE_DIR / "data" / "gmail_token.json"
 GMAIL_CREDENTIALS_PATH = GOOGLE_CREDENTIALS_PATH
 GMAIL_TOKEN_PATH = GOOGLE_TOKEN_PATH
-GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+# gmail.send is additive to readonly, and sending is the one thing the assistant
+# could never do (it could read your inbox but not reply).
+# NOTE: changing this list invalidates an existing data/google_token.json --
+# delete that file and re-run OAuth once.
+GMAIL_SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
+]
 GOOGLE_CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar"]
 GOOGLE_DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
 GOOGLE_SCOPES = list(dict.fromkeys(GMAIL_SCOPES + GOOGLE_CALENDAR_SCOPES + GOOGLE_DRIVE_SCOPES))
@@ -88,6 +95,29 @@ AGENT_STEP_TIMEOUT = int(os.getenv("AGENT_STEP_TIMEOUT", "30"))
 # Per-request timeout for a single agent LLM call. Keeps a hung/slow key from
 # blocking the whole agent run (a slow key now fails fast and we move on).
 AGENT_REQUEST_TIMEOUT = int(os.getenv("AGENT_REQUEST_TIMEOUT", "18"))
+# Output budget for one agent step. The default agent model (gemini-2.5-flash) is
+# a REASONING model: it spends tokens thinking before it emits anything. At 1024
+# the whole budget went on thinking and the API returned an EMPTY message with no
+# tool calls, which the loop then had to treat as a final answer -- observed live
+# on "what's my battery level". Same lesson the old brain classifier learned at
+# 20 tokens. Give it room.
+AGENT_MAX_OUTPUT_TOKENS = int(os.getenv("AGENT_MAX_OUTPUT_TOKENS", "3000"))
+# Thinking budget for the agent's Gemini calls. gemini-2.5-flash is a thinking
+# model and its "thinking" tokens are drawn from the SAME output budget as the
+# answer, so a long prompt plus 95 tool schemas can consume the whole budget and
+# return an empty message -- no text, no tool call. Measured with
+# scripts/_m13_provider_probe.py: with thinking off the model still selects the
+# correct tool on the first attempt (17 completion tokens).
+# "" disables the parameter entirely; "none" | "low" | "medium" | "high" are the
+# values the Gemini OpenAI-compatible endpoint accepts.
+AGENT_REASONING_EFFORT = os.getenv("AGENT_REASONING_EFFORT", "none").strip()
+
+# A tool result longer than this is written to data/tool_results/ and replaced in
+# the conversation by a one-line pointer the agent can read_file if it needs the
+# detail. ui_list_controls alone can emit UIA_MAX_NODES (4000) nodes, and that
+# payload was then re-sent to the model on every remaining step of a 16-step
+# loop. Size-based on purpose: no tool list to keep in sync. 0 disables.
+AGENT_TOOL_RESULT_MAX_CHARS = int(os.getenv("AGENT_TOOL_RESULT_MAX_CHARS", "4000"))
 PYAUTOGUI_FAILSAFE = os.getenv("PYAUTOGUI_FAILSAFE", "true").strip().lower() != "false"
 GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
 
@@ -205,6 +235,20 @@ UIA_ENABLED = _env_bool("UIA_ENABLED", True)
 UIA_LIBRARY = os.getenv("UIA_LIBRARY", "pywinauto").strip().lower()
 # How long (seconds) to search the UI tree for a control before giving up.
 UIA_FIND_TIMEOUT = float(os.getenv("UIA_FIND_TIMEOUT", "5.0"))
+# Budget for a COMPLETE UI operation on the dedicated UI thread: resolve the
+# window, walk the tree, act, and read the result back. This is the number that
+# actually protects the request thread, so it is the one to tune.
+UIA_OP_TIMEOUT = float(os.getenv("UIA_OP_TIMEOUT", "20.0"))
+# How long to wait for a named window to appear before falling back to the
+# foreground window (pages like "Display" are not windows -- they live inside
+# the "Settings" window -- so a fallback is required, not optional).
+UIA_WINDOW_WAIT = float(os.getenv("UIA_WINDOW_WAIT", "3.0"))
+# Hard cap on tree nodes inspected per walk. Browser content trees can hold tens
+# of thousands of nodes; no prompt can consume them and walking them all would
+# stall the apartment.
+UIA_MAX_NODES = int(os.getenv("UIA_MAX_NODES", "4000"))
+# Max steps in one generic UI navigation loop (read -> act -> re-read).
+UIA_NAV_MAX_STEPS = int(os.getenv("UIA_NAV_MAX_STEPS", "6"))
 # UIA-first, vision-fallback: when a UI step can't be verified, fall back to the
 # Phase 4 vision verifier (re-uses CHECKER_VISION_ENABLED + the Gemini verifier).
 PHASE5_VISION_FALLBACK = _env_bool("PHASE5_VISION_FALLBACK", True)
@@ -215,6 +259,15 @@ CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 MAX_CHAT_HISTORY_TURNS = 20
 MAX_MESSAGE_LENGTH = 32_000
+
+# ===================== Conversation History UI =====================
+# These bound the history sidebar only. MAX_CHAT_HISTORY_TURNS above still
+# controls how much context the LLM receives -- the two are independent.
+HISTORY_PAGE_SIZE = int(os.getenv("HISTORY_PAGE_SIZE", "30"))
+HISTORY_MAX_PAGE_SIZE = int(os.getenv("HISTORY_MAX_PAGE_SIZE", "100"))
+HISTORY_TITLE_MAX_CHARS = int(os.getenv("HISTORY_TITLE_MAX_CHARS", "120"))
+HISTORY_PREVIEW_MAX_CHARS = int(os.getenv("HISTORY_PREVIEW_MAX_CHARS", "160"))
+HISTORY_SEARCH_MAX_CHARS = int(os.getenv("HISTORY_SEARCH_MAX_CHARS", "200"))
 ASSISTANT_NAME = (os.getenv("ASSISTANT_NAME", "").strip() or "Jarvis")
 JARVIS_USER_TITLE = os.getenv("JARVIS_USER_TITLE", "").strip()
 JARVIS_OWNER_NAME = os.getenv("JARVIS_OWNER_NAME", "").strip()
@@ -262,6 +315,19 @@ else:
     JARVIS_SYSTEM_PROMPT = _JARVIS_SYSTEM_PROMPT_BASE_FMT
 
 GENERAL_CHAT_ADDENDUM = """
+HARD RULE -- NEVER CLAIM AN ACTION HAPPENED. You are in conversation mode and have
+NO tools and NO control over this computer right now. You cannot open, close,
+click, toggle, play, save or change anything, and you cannot see what the system
+did. So you must never say a system action was done, is being done, or just
+completed. Phrases like "Done", "Night light is now on", "I've turned it off",
+"Turning it off now" are forbidden here -- they have caused the assistant to
+report success for actions that never ran.
+HAND BACK INSTEAD OF PROMISING. If the message actually needs an action, do not
+promise to do it either -- "I'll open it", "I'll search for that and play it" are
+just as wrong, because this turn ends when you stop typing and nothing will have
+run. Say in one short sentence that it needs to be run and ask the user to
+confirm they want it now. If the user asks why something failed, do not invent a
+cause; say you will check.
 You are in GENERAL mode (no web search). Answer from your knowledge and the context provided (learning data, conversation history). Answer confidently and briefly. Never tell the user to search online or check a website — you are their source. Default to 1-2 sentences; only elaborate when the user asks for more or the question clearly needs it. If you have relevant context from the user's learning data, use it naturally without mentioning the source.
 """
 
@@ -289,6 +355,19 @@ MEMORY_CONTEXT_MAX_CHARS = int(os.getenv("MEMORY_CONTEXT_MAX_CHARS", "1800"))
 MEMORY_MAX_FACTS_INJECT = int(os.getenv("MEMORY_MAX_FACTS_INJECT", "12"))
 MEMORY_MAX_ACTIONS = int(os.getenv("MEMORY_MAX_ACTIONS", "60"))
 MEMORY_REDACT_SECRETS = _env_bool("MEMORY_REDACT_SECRETS", True)
+
+# --- Passive fact extraction -------------------------------------------------
+# `remember` is a tool, so the agent only stores something when it decides to
+# call it -- which it essentially never did (facts=0 after 60 recorded actions).
+# This runs a cheap LLM pass AFTER the reply has been streamed, so the user
+# never waits for it, and writes anything durable it finds to the facts table.
+MEMORY_EXTRACT_ENABLED = _env_bool("MEMORY_EXTRACT_ENABLED", True)
+MEMORY_EXTRACT_MODEL = os.getenv("MEMORY_EXTRACT_MODEL", INTENT_CLASSIFY_MODEL)
+# Hard cap per turn so one chatty message cannot flood the table.
+MEMORY_EXTRACT_MAX_FACTS_PER_TURN = int(os.getenv("MEMORY_EXTRACT_MAX_FACTS_PER_TURN", "3"))
+# Below this length a message cannot plausibly carry a durable fact.
+MEMORY_EXTRACT_MIN_MESSAGE_CHARS = int(os.getenv("MEMORY_EXTRACT_MIN_MESSAGE_CHARS", "12"))
+MEMORY_EXTRACT_TIMEOUT = int(os.getenv("MEMORY_EXTRACT_TIMEOUT", "8"))
 MEMORY_DIR.mkdir(parents=True, exist_ok=True)
 
 # === Phase 4: Checker + Vision + Self-Learning (Master Plan Phase 4) ===
@@ -356,6 +435,84 @@ CONTEXT_INCLUDE_CLIPBOARD_IN_PROMPT = _env_bool(
 USER_MODEL_DB_PATH = BASE_DIR / "data" / "user_model.db"
 # A habit must be observed at least this many times before it is trusted.
 HABIT_MIN_OBSERVATIONS = int(os.getenv("HABIT_MIN_OBSERVATIONS", "3"))
+
+# === Section 8: Cache promotion policy (Section 17 config) ===
+# Weak/transport-only evidence requires this many consistent observations.
+CACHE_WEAK_EVIDENCE_MIN_OBS = int(os.getenv("CACHE_WEAK_EVIDENCE_MIN_OBS", "3"))
+# Confirmation grant expiry (seconds). After this, a pending confirmation lapses.
+CONFIRMATION_GRANT_EXPIRY_SECONDS = int(os.getenv("CONFIRMATION_GRANT_EXPIRY_SECONDS", "120"))
+# Maximum pending executions before cleanup (Section 18).
+EXECUTION_PENDING_MAX = int(os.getenv("EXECUTION_PENDING_MAX", "50"))
+# Event queue size limit.
+EVENT_QUEUE_MAX_SIZE = int(os.getenv("EVENT_QUEUE_MAX_SIZE", "500"))
+# Activity history display limit.
+ACTIVITY_HISTORY_LIMIT = int(os.getenv("ACTIVITY_HISTORY_LIMIT", "60"))
+
+# === SQLite lifecycle (shared by every database in data/) ===
+# Every DB is opened through app.services.db.open_db() so that WAL settings and
+# shutdown checkpointing are applied uniformly. Without an autocheckpoint the
+# -wal file grows without bound and every read has to scan it; without a close
+# on shutdown the -wal/-shm files are left behind entirely.
+# Pages between automatic WAL merges (SQLite default is 1000; 0 disables).
+DB_WAL_AUTOCHECKPOINT_PAGES = int(os.getenv("DB_WAL_AUTOCHECKPOINT_PAGES", "1000"))
+# How long a writer waits for a competing lock before raising "database is locked".
+DB_BUSY_TIMEOUT_MS = int(os.getenv("DB_BUSY_TIMEOUT_MS", "5000"))
+
+# === Maintenance: retention + backup ===
+# Nothing under data/ was ever pruned, so debug logs and the TTS voice cache
+# grew without bound, and the databases had no backup at all. All jobs are
+# fail-soft: a maintenance error must never stop JARVIS from starting.
+MAINTENANCE_ENABLED = _env_bool("MAINTENANCE_ENABLED", True)
+# Per-session debug logs older than this are deleted. server.log/trace.log are kept.
+RETENTION_DEBUG_LOG_DAYS = int(os.getenv("RETENTION_DEBUG_LOG_DAYS", "7"))
+# Synthesised TTS clips are re-creatable, so cap them by count and total size (LRU).
+RETENTION_VOICE_CACHE_FILES = int(os.getenv("RETENTION_VOICE_CACHE_FILES", "200"))
+RETENTION_VOICE_CACHE_MB = int(os.getenv("RETENTION_VOICE_CACHE_MB", "20"))
+# Offloaded large tool results (see AGENT_TOOL_RESULT_MAX_CHARS) are transient.
+RETENTION_TOOL_RESULT_DAYS = int(os.getenv("RETENTION_TOOL_RESULT_DAYS", "2"))
+# Action rows older than this move to actions_archive. Archived, never deleted.
+RETENTION_ACTION_ARCHIVE_DAYS = int(os.getenv("RETENTION_ACTION_ARCHIVE_DAYS", "90"))
+# Daily snapshot of every database, taken with SQLite's .backup() API.
+BACKUP_ENABLED = _env_bool("BACKUP_ENABLED", True)
+BACKUP_DIR = BASE_DIR / "data" / "backups"
+BACKUP_KEEP_DAYS = int(os.getenv("BACKUP_KEEP_DAYS", "7"))
+
+
+# === M13: understanding layer (the resolver) ===
+# One LLM call per turn that turns the raw utterance into a self-contained goal
+# plus structural flags. It REPLACES the old category classifier in the hot
+# path, so it is cost-neutral. Nothing about any phrasing is hardcoded: the
+# resolver understands language, it does not match it.
+RESOLVER_ENABLED = _env_bool("RESOLVER_ENABLED", True)
+RESOLVER_MODEL = os.getenv("RESOLVER_MODEL", GEMINI_BRAIN_MODEL)
+RESOLVER_TIMEOUT = int(os.getenv("RESOLVER_TIMEOUT", "6"))
+RESOLVER_MAX_HISTORY_TURNS = int(os.getenv("RESOLVER_MAX_HISTORY_TURNS", "8"))
+# Cap how many keys of one provider are tried before failing over to the next.
+# Understanding sits in front of EVERY turn, so a provider-wide outage (Gemini
+# 503 "high demand") must not cost ~4s per key across every key -- that is what
+# produced the 14-22s classify times in the old brain logs. With 10+ keys the
+# failure is almost never key-specific, so 3 attempts is plenty of evidence.
+RESOLVER_MAX_FAILOVER_KEYS = int(os.getenv("RESOLVER_MAX_FAILOVER_KEYS", "3"))
+# Shadow mode: run the resolver, log what it understood, but keep obeying the
+# old router. Used for one session's worth of use before switching over.
+RESOLVER_SHADOW_MODE = _env_bool("RESOLVER_SHADOW_MODE", False)
+
+# === M13: truthfulness ===
+# Wait (briefly, boundedly) for the Phase 4 verdict of the actions this turn
+# executed BEFORE composing the final sentence. A verdict that lands after the
+# reply has streamed can only ever produce a late correction bubble.
+VERIFY_BEFORE_REPLY = _env_bool("VERIFY_BEFORE_REPLY", True)
+VERIFY_WAIT_TIMEOUT = float(os.getenv("VERIFY_WAIT_TIMEOUT", "3.0"))
+# On a verified FAIL, re-enter the agent loop exactly once with the reason.
+AGENT_RETRY_ON_FAIL = _env_bool("AGENT_RETRY_ON_FAIL", True)
+# Structural gate: an action turn that called zero tools gets this many nudges
+# before the turn admits it did nothing. Never reports "Done."
+AGENT_NO_OP_NUDGES = int(os.getenv("AGENT_NO_OP_NUDGES", "1"))
+# Only commands that carried their own meaning may be promoted to the cache.
+# "close it" can never become a cache entry, however often it succeeds.
+CACHE_REQUIRE_SELF_CONTAINED = _env_bool("CACHE_REQUIRE_SELF_CONTAINED", True)
+# How long a frontend dispatch may stay un-acknowledged before it is swept.
+FRONTEND_DISPATCH_MAX_AGE = float(os.getenv("FRONTEND_DISPATCH_MAX_AGE", "120"))
 
 
 def load_user_context() -> str:

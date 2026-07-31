@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
 import config as _cfg
+from app.services.debug_logger import dbg
 
 logger = logging.getLogger("J.A.R.V.I.S")
 
@@ -89,10 +90,70 @@ _SYSTEM_PROMPT = (
     "- You MAY add a 'fallback' tool+args to try if the main step fails.\n"
     "- Mark 'risky': true for irreversible/destructive steps (delete, close-all, "
     "send, purchase, shutdown).\n"
+    "- THE PLAN MUST REACH THE GOAL. Opening a window is never the last step when "
+    "the user asked for something to change inside it. 'turn off night light' is "
+    "NOT 'open Settings' -- it is open the page, then ui_do(target='Night light', "
+    "action='toggle', state=false). Use ui_do for anything that must be clicked, "
+    "toggled or typed on screen; it finds the control itself, including by "
+    "searching and scrolling.\n"
+    "- Never produce a step whose description tells the USER to do it manually. If "
+    "you cannot reach the goal with the available tools, return {\"steps\": []}.\n"
     "Respond with STRICT JSON only:\n"
     '{"steps":[{"description":"...","tool":"tool_name","args":{...},'
     '"risky":false,"precondition":null,"fallback":null}]}'
 )
+
+
+# Verbs that mean "change something", as opposed to "show me something". If the
+# goal contains one of these, a plan made only of open/launch steps has not done
+# the job. Kept as vocabulary rather than per-feature rules so it generalises.
+_CHANGE_VERBS = (
+    "turn on", "turn off", "switch on", "switch off", "enable", "disable",
+    "toggle", "click", "press", "select", "choose", "change", "set", "increase",
+    "decrease", "raise", "lower", "mute", "unmute", "play", "pause", "save",
+    "rename", "delete", "install", "update", "connect", "disconnect", "check for",
+    "type", "write", "send", "submit", "apply", "chalu", "band", "kar do", "karo",
+    "badal", "chala", "bandh",
+)
+try:
+    _CHANGE_VERB_RE = re.compile(
+        r"\b(?:" + "|".join(re.escape(v) for v in _CHANGE_VERBS) + r")\b"
+    )
+except re.error:  # pragma: no cover - defensive
+    _CHANGE_VERB_RE = None
+# Steps that only surface a window.
+_OPEN_ONLY_TOOLS = ("open_application", "open_settings_page", "open_website",
+                    "focus_window", "open_folder", "open_file")
+# Phrases that mean the plan is handing the work back to the user.
+_MANUAL_HANDOFF = ("manually", "you can then", "where you can", "so you can",
+                   "the user can", "yourself", "by hand")
+
+
+def plan_shortfall(goal: str, steps) -> str:
+    """Return why a plan fails to reach `goal`, or "" when it looks complete.
+
+    Pure and deterministic, so it is unit-testable without an LLM or a desktop.
+    """
+    text = _clean(goal, 400).lower()
+    if not steps:
+        return "no steps"
+    if _CHANGE_VERB_RE is None:
+        return ""
+
+    tools = [str(getattr(s, "tool", "")).strip() for s in steps]
+    descriptions = " ".join(str(getattr(s, "description", "")) for s in steps).lower()
+
+    for phrase in _MANUAL_HANDOFF:
+        if phrase in descriptions:
+            return f"a step tells the user to do it themselves ('{phrase}')"
+
+    # Word boundaries matter: a plain substring test made "display settings"
+    # look like a change request, because "display" contains "play".
+    wants_change = bool(_CHANGE_VERB_RE.search(text))
+    if wants_change and tools and all(t in _OPEN_ONLY_TOOLS for t in tools):
+        return ("the goal asks for a change but the plan only opens things "
+                f"({', '.join(tools)})")
+    return ""
 
 
 def _tool_catalogue(registry, limit: int = 60) -> str:
@@ -159,6 +220,16 @@ class Planner:
         steps = self._build_steps(data["steps"], registry)
         if not steps:
             logger.info("[PLANNER] plan had no valid tool steps -> fallback to agent")
+            return Plan(goal=goal, steps=[], source="fallback")
+        shortfall = plan_shortfall(goal, steps)
+        if shortfall:
+            # A plan that stops short is worse than no plan: its one trivial step
+            # verifies PASS, the run reports success, and the wrong behaviour gets
+            # promoted into the command cache. Observed for real: "turn off night
+            # light" was cached as "open Settings".
+            logger.info("[PLANNER] rejecting plan for '%s': %s", _clean(goal), shortfall)
+            dbg.info("PLANNER", "PLAN REJECTED", {"goal": goal[:120], "reason": shortfall,
+                                                  "steps": [s.tool for s in steps]})
             return Plan(goal=goal, steps=[], source="fallback")
         logger.info("[PLANNER] '%s' -> %d step(s): %s", _clean(goal), len(steps),
                     " | ".join(_clean(s.tool, 24) for s in steps))

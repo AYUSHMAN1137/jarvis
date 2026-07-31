@@ -1,0 +1,37 @@
+{
+  "session_id": "ddbbaab2-9842-4472-a5f4-028b74a7a1de",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello Jarvis, how are you?"
+    },
+    {
+      "role": "assistant",
+      "content": "I'm good, thanks, Ayush. How can I assist you today?"
+    },
+    {
+      "role": "user",
+      "content": "How's the weather today, man?"
+    },
+    {
+      "role": "assistant",
+      "content": "In Dehradun it’s about 79 °F (23 °C) now with patchy rain and fog, a 95 % chance of showers later, and temperatures expected to reach roughly 82 °F this afternoon before dropping to around 74 °F tonight."
+    },
+    {
+      "role": "user",
+      "content": "Tell me today's latest news."
+    },
+    {
+      "role": "assistant",
+      "content": "Japan’s Kyushu region was hit by a strong quake, triggering landslides and trapping dozens in a collapsed shopping‑mall, while in Washington a presidential pardon for former officials sparked debate over whether it would protect Dr. Fauci from congressional testimony; meanwhile, President Zelenskyy and Israeli Prime Minister Netanyahu met today amid rising tensions in Ukraine and ongoing drone strikes on Moscow."
+    },
+    {
+      "role": "user",
+      "content": "Any Indian news please?"
+    },
+    {
+      "role": "assistant",
+      "content": "India is grappling with severe monsoon flooding in Assam—the worst in years—with thousands displaced and rescue efforts under way, while Gen Z activists have turned the cockroach into a protest symbol, prompting Prime Minister Modi’s “Wed in India” campaign to address the unrest."
+    }
+  ]
+}

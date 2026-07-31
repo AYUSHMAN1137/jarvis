@@ -29,6 +29,28 @@ logging.basicConfig(
 
 logger = logging.getLogger("J.A.R.V.I.S")
 
+# Mirror the console log to data/debug_logs/server.log. Console output is lost
+# the moment the terminal scrolls, and it carries things the per-session debug
+# log does not: third-party tracebacks, COM warnings, uvicorn errors.
+try:
+    from logging.handlers import RotatingFileHandler
+    from pathlib import Path as _Path
+
+    _log_dir = _Path(__file__).resolve().parent.parent / "data" / "debug_logs"
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _server_log = RotatingFileHandler(
+        _log_dir / "server.log", maxBytes=8 * 1024 * 1024, backupCount=2,
+        encoding="utf-8",
+    )
+    _server_log.setLevel(logging.INFO)
+    _server_log.setFormatter(logging.Formatter(
+        '%(asctime)s | %(levelname)-8s | %(name)-20s | %(threadName)-18s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+    ))
+    logging.getLogger().addHandler(_server_log)
+except Exception as _fh_err:  # noqa: BLE001 - never block startup on logging
+    logger.warning("[STARTUP] server.log file handler not installed: %s", _fh_err)
+
 # Silence the harmless comtypes COM-release access violation that pycaw/pywinauto
 # objects raise from __del__ during GC on a non-owning thread. Must run before
 # any COM object is created (i.e. before the watcher / audio / UIA start).
@@ -88,6 +110,8 @@ from app.api.dashboard import router as dashboard_router  # noqa: E402
 from app.api.proactive import router as proactive_router  # noqa: E402
 from app.api.usermodel import router as usermodel_router  # noqa: E402
 from app.api.testing import router as testing_router    # noqa: E402
+from app.api.reminders import router as reminders_router  # noqa: E402
+from app.api.notes import router as notes_router          # noqa: E402
 
 app.include_router(system_router)
 app.include_router(chat_router)
@@ -96,11 +120,17 @@ app.include_router(dashboard_router)
 app.include_router(proactive_router)
 app.include_router(usermodel_router)
 app.include_router(testing_router)
+app.include_router(reminders_router)
+app.include_router(notes_router)
 
 # ---------------------------------------------------------------------------
 # Static files & root redirect
 # ---------------------------------------------------------------------------
 _web_dir = Path(__file__).resolve().parent.parent / "web"
+
+# NOTE: the /jarvis/c/<session_id> deep-link route lives in app/api/dashboard.py
+# and is registered above with the other routers -- i.e. BEFORE these mounts, so
+# it wins the match instead of 404ing on StaticFiles.
 
 if _web_dir.exists():
     # Canonical: serve the JARVIS app UI directly at /jarvis (no redirect to /app).

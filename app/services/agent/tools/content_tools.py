@@ -32,6 +32,7 @@ logger = logging.getLogger("J.A.R.V.I.S")
         }
     },
     category="content",
+    verification={"family": "frontend"},
 )
 def generate_image(prompt: str) -> str:
     p = (prompt or "").strip()
@@ -60,6 +61,7 @@ def generate_image(prompt: str) -> str:
         }
     },
     category="content",
+    verification={"family": "frontend"},
 )
 def write_content(prompt: str) -> str:
     p = (prompt or "").strip()

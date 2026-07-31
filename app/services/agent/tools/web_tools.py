@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Dict, Optional
 from urllib.parse import quote
 
 from app.services.agent.tool_registry import tool
@@ -25,88 +24,31 @@ from app.services.debug_logger import dbg
 
 logger = logging.getLogger("J.A.R.V.I.S")
 
-_SITE_MAP = {
-    "facebook": "https://www.facebook.com", "instagram": "https://www.instagram.com",
-    "youtube": "https://www.youtube.com", "google": "https://www.google.com",
-    "netflix": "https://www.netflix.com", "twitter": "https://twitter.com",
-    "x": "https://x.com", "gmail": "https://mail.google.com",
-    "whatsapp": "https://web.whatsapp.com", "linkedin": "https://www.linkedin.com",
-    "reddit": "https://www.reddit.com", "discord": "https://discord.com/app",
-    "spotify": "https://open.spotify.com", "amazon": "https://www.amazon.com",
-    "github": "https://github.com", "wikipedia": "https://www.wikipedia.org",
-    "maps": "https://www.google.com/maps", "drive": "https://drive.google.com",
-}
-
-
 def _normalize_url(target: str) -> str:
-    t = (target or "").strip()
-    low = t.lower()
-    if low in _SITE_MAP:
-        return _SITE_MAP[low]
-    if t.startswith("http://") or t.startswith("https://"):
-        return t
-    if "." in t and " " not in t:
-        return "https://" + t
-    # Local addresses such as "localhost" or "localhost:8000" are not public .com sites.
-    if low == "localhost" or low.startswith("localhost:"):
-        return "http://" + t
-    return f"https://www.{low.replace(' ', '')}.com"
+    """Turn whatever the agent passed into a URL the browser can open.
 
+    M13 §4.3 removed `_SITE_MAP`, the hand-written name -> URL table. It was a
+    guess about language ("x" means twitter.com, "drive" means Google Drive) and
+    every miss needed another line. The agent already knows what URL a site has;
+    all this has to do is normalise a string into a valid address.
 
-# Verb sets for the deterministic fast-path (English + common Hindi).
-_OPEN_VERBS = r"open|launch|start|go to|goto|visit|kholo|khol do|khol"
-_PLAY_VERBS = r"play|chalao|chala do|bajao|baja do"
-_SEARCH_VERBS = r"google|search for|search"
-
-
-def try_direct_web_command(message: str) -> Optional[Dict[str, Any]]:
-    """Deterministic fast-path for explicit, unambiguous web commands.
-
-    Voice commands like "open youtube" / "play X" / "search Y" are mechanical
-    actions. LLM tool-calling for them is unreliable (Groq sometimes emits a
-    malformed tool call, Gemini sometimes just replies "Done." without acting),
-    so for these clear cases we map straight to the right web tool -- instant
-    and 100%% reliable. Anything ambiguous (e.g. "open notepad", a desktop app)
-    returns None and is handled by the normal LLM agent. Only reached for
-    task-routed messages, so everyday chit-chat never lands here.
+    What stays is purely mechanical: a scheme, a dotted hostname, a local
+    address, or a bare name that gets the conventional www/.com shape.
     """
-    if not message:
-        return None
-    low = message.strip().lower().strip(" .!?\u0964")
-    if not low:
-        return None
-
-    # ---- play on youtube ----
-    # NOTE: "play X" commands are NOT handled here. They need multi-step
-    # interaction (open search page → list controls → click first video),
-    # so they MUST go through the LLM agent which can chain tool calls.
-    # The agent will call play_on_youtube (opens page fast) then
-    # ui_list_controls + ui_click to actually start playback.
-
-    # ---- google search ----
-    m = re.match(rf"^(?:{_SEARCH_VERBS})\s+(.+)$", low)
-    if m:
-        q = re.sub(r"\s+(?:on|pe|par)\s+google$", "", m.group(1).strip()).strip()
-        if q:
-            return {"tool": "search_google", "args": {"query": q},
-                    "say": f"Searching Google for {q}, Sir."}
-
-    # ---- open website (only when clearly a site; desktop apps go to the agent) ----
-    m = re.match(rf"^(?:{_OPEN_VERBS})\s+(.+)$", low) or re.match(r"^(.+?)\s+(?:kholo|khol do|open karo)$", low)
-    if m:
-        target = m.group(1).strip()
-        target = re.sub(r"^(?:the\s+|website\s+|site\s+|app\s+)", "", target).strip()
-        target = re.sub(r"\s+(?:website|site)$", "", target).strip()
-        is_site = (
-            target in _SITE_MAP
-            or target.startswith("http://") or target.startswith("https://")
-            or ("." in target and " " not in target)
-        )
-        if is_site:
-            return {"tool": "open_website", "args": {"target": target},
-                    "say": f"Opening {target}, Sir."}
-
-    return None
+    raw = (target or "").strip().strip("<>\"'")
+    if not raw:
+        return "https://www.google.com"
+    low = raw.lower()
+    if low.startswith(("http://", "https://")):
+        return raw
+    # Local addresses ("localhost", "localhost:8000", "127.0.0.1:8000") are not
+    # public .com sites and are not https either.
+    host = low.split("/", 1)[0]
+    if host == "localhost" or host.startswith("localhost:") or host.startswith("127.0.0.1"):
+        return "http://" + raw
+    if "." in host and " " not in host:
+        return "https://" + raw
+    return "https://www." + re.sub(r"\s+", "", low) + ".com"
 
 
 @tool(
@@ -122,6 +64,7 @@ def try_direct_web_command(message: str) -> Optional[Dict[str, Any]]:
         }
     },
     category="web",
+    verification={"family": "frontend"},
 )
 def open_website(target: str) -> str:
     url = _normalize_url(target)
@@ -139,6 +82,7 @@ def open_website(target: str) -> str:
     ),
     params={"query": {"type": "string", "description": "Song or video to search and play."}},
     category="web",
+    verification={"family": "frontend"},
 )
 def play_on_youtube(query: str) -> str:
     import re as _re
@@ -206,7 +150,12 @@ def play_on_youtube(query: str) -> str:
         except Exception:  # noqa: BLE001
             action_sink.add_play(video_url)
         title_str = f' "{video_title}"' if video_title else ""
-        return f"Now playing{title_str} on YouTube. Enjoy! 🎵"
+        # Honest wording: we opened the video page. We did NOT confirm playback,
+        # and claiming we did is how "Now playing..." got reported for videos that
+        # never started. If confirmation matters, the agent can check the browser
+        # window with ui_list_controls / ui_do.
+        return (f"Opened{title_str} on YouTube in the browser. It should start "
+                "playing on its own; tell me if it does not.")
     else:
         # Fallback: just open the search page
         try:
@@ -224,6 +173,7 @@ def play_on_youtube(query: str) -> str:
     description="Run a Google search and open the results in the browser.",
     params={"query": {"type": "string", "description": "What to search on Google."}},
     category="web",
+    verification={"family": "frontend"},
 )
 def search_google(query: str) -> str:
     q = (query or "").strip()
@@ -240,6 +190,7 @@ def search_google(query: str) -> str:
     description="Open YouTube search results for a query (without auto-playing).",
     params={"query": {"type": "string", "description": "What to search on YouTube."}},
     category="web",
+    verification={"family": "frontend"},
 )
 def search_youtube(query: str) -> str:
     q = (query or "").strip()

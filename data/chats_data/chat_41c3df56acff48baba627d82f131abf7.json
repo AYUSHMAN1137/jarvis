@@ -1,0 +1,13 @@
+{
+  "session_id": "41c3df56-acff-48ba-ba62-7d82f131abf7",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What?"
+    },
+    {
+      "role": "assistant",
+      "content": "Sorry, could you clarify what you’d like to know?"
+    }
+  ]
+}

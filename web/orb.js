@@ -1,13 +1,63 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Multi-State WebGL Orb Renderer
+   ───────────────────────────────────────────────────────────────────
+   6 animated states, each with its own visual personality.
+   Smooth lerp transitions between states (~250ms settle time).
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── State presets ──
+ * Each key maps to a set of target values for shader uniforms.
+ * The render loop lerps the current values toward these targets.
+ *
+ *   hover      – 0=dim/inactive, 1=full brightness
+ *   speedMul   – time multiplier for noise + angular blend
+ *   noiseMul   – surface wobble intensity (0=smooth sphere, >1=chaotic)
+ *   hue        – hue rotation in degrees from base purple-cyan palette
+ *   glowMul    – overall glow/brightness multiplier
+ *   waveAmp    – UV waveform distortion (listening "audio response" effect)
+ *   orbitSpeed – orbiting highlight speed multiplier
+ *   rotSpeed   – continuous rotation speed (rad/s)
+ */
+const ORB_DEFAULTS = {
+    idle:      { hover: 0,   speedMul: 0.3, noiseMul: 0.6, hue: 0,   glowMul: 0.5, waveAmp: 0.0,  orbitSpeed: 1.0, rotSpeed: 0.0  },
+    listening: { hover: 1,   speedMul: 1.5, noiseMul: 0.8, hue: 60,  glowMul: 0.9, waveAmp: 0.25, orbitSpeed: 1.0, rotSpeed: 0.15 },
+    thinking:  { hover: 1,   speedMul: 2.0, noiseMul: 1.4, hue: -20, glowMul: 1.0, waveAmp: 0.05, orbitSpeed: 2.5, rotSpeed: 0.6  },
+    searching: { hover: 1,   speedMul: 1.8, noiseMul: 1.0, hue: 90,  glowMul: 0.8, waveAmp: 0.0,  orbitSpeed: 3.0, rotSpeed: 0.4  },
+    working:   { hover: 1,   speedMul: 1.2, noiseMul: 1.2, hue: 30,  glowMul: 1.2, waveAmp: 0.03, orbitSpeed: 1.5, rotSpeed: 0.3  },
+    speaking:  { hover: 1,   speedMul: 0.8, noiseMul: 0.7, hue: 0,   glowMul: 0.7, waveAmp: 0.0,  orbitSpeed: 1.0, rotSpeed: 0.2  },
+};
+
+// Mutable copy — dashboard modifies this, ORB_DEFAULTS stays immutable for reset
+let ORB_STATES = JSON.parse(JSON.stringify(ORB_DEFAULTS));
+
+// Default lerp rate (instance property, overridable from dashboard)
+const ORB_DEFAULT_LERP_RATE = 6;
+
 class OrbRenderer {
     constructor(container, opts = {}) {
         this.container = container;
-        this.hue = opts.hue ?? 0;
+        this.baseHue = opts.hue ?? 0;
         this.hoverIntensity = opts.hoverIntensity ?? 0.2;
         this.bgColor = opts.backgroundColor ?? [0.02, 0.02, 0.06];
-        this.targetHover = 0;
-        this.currentHover = 0;
+        this.lerpRate = ORB_DEFAULT_LERP_RATE;
+
+        // ── State management ──
+        this.stateName = 'idle';
+        const idle = ORB_STATES.idle;
+
+        // Animated properties — current values (lerped toward targets each frame)
+        this.targetHover      = idle.hover;       this.currentHover      = idle.hover;
+        this.targetSpeedMul   = idle.speedMul;    this.currentSpeedMul   = idle.speedMul;
+        this.targetNoiseMul   = idle.noiseMul;    this.currentNoiseMul   = idle.noiseMul;
+        this.targetHueShift   = idle.hue;         this.currentHueShift   = idle.hue;
+        this.targetGlowMul    = idle.glowMul;     this.currentGlowMul    = idle.glowMul;
+        this.targetWaveAmp    = idle.waveAmp;     this.currentWaveAmp    = idle.waveAmp;
+        this.targetOrbitSpeed = idle.orbitSpeed;   this.currentOrbitSpeed = idle.orbitSpeed;
+        this.targetRotSpeed   = idle.rotSpeed;    this.currentRotSpeed   = idle.rotSpeed;
+
         this.currentRot = 0;
         this.lastTs = 0;
+
         this.canvas = document.createElement('canvas');
         this.canvas.style.width = '100%';
         this.canvas.style.height = '100%';
@@ -20,12 +70,14 @@ class OrbRenderer {
         window.addEventListener('resize', this._onResize);
         this._raf = requestAnimationFrame(this._loop.bind(this));
     }
+
     static VERT = `
     precision highp float;
     attribute vec2 position;
     attribute vec2 uv;
     varying vec2 vUv;
     void main(){ vUv=uv; gl_Position=vec4(position,0.0,1.0); }`;
+
     static FRAG = `
     precision highp float;
     uniform float iTime;
@@ -35,7 +87,14 @@ class OrbRenderer {
     uniform float rot;
     uniform float hoverIntensity;
     uniform vec3  backgroundColor;
+    /* ── New state-driven uniforms ── */
+    uniform float speedMul;
+    uniform float noiseMul;
+    uniform float glowMul;
+    uniform float waveAmp;
+    uniform float orbitSpeed;
     varying vec2  vUv;
+
     /* ----- Color-space conversion: RGB ↔ YIQ ----- */
     // YIQ is the color model used by NTSC television. Converting to
     // YIQ lets us rotate the hue of any color by simply rotating the
@@ -123,17 +182,23 @@ class OrbRenderer {
         vec3 c1=adjustHue(baseColor1,hue);vec3 c2=adjustHue(baseColor2,hue);vec3 c3=adjustHue(baseColor3,hue);
         float ang=atan(uv.y,uv.x);float len=length(uv);float invLen=len>0.0?1.0/len:0.0;
         float bgLum=dot(backgroundColor,vec3(.299,.587,.114));  // perceptual luminance of the bg
-        float n0=snoise3(vec3(uv*noiseScale,iTime*0.5))*0.5+0.5;  // noise remapped to [0,1]
-        float r0=mix(mix(innerRadius,1.0,0.4),mix(innerRadius,1.0,0.6),n0);  // wobbly radius
+        // ── speedMul drives noise evolution speed ──
+        float n0=snoise3(vec3(uv*noiseScale,iTime*0.5*speedMul))*0.5+0.5;  // noise remapped to [0,1]
+        // ── noiseMul scales the wobble amplitude (0.5=no wobble center) ──
+        float nScaled=mix(0.5,n0,noiseMul);
+        float r0=mix(mix(innerRadius,1.0,0.4),mix(innerRadius,1.0,0.6),nScaled);  // wobbly radius
         float d0=distance(uv,(r0*invLen)*uv);  // distance from pixel to the wobbly edge
-        float v0=light1(1.0,10.0,d0);          // main radial glow
+        // ── glowMul amplifies the main glow ──
+        float v0=light1(1.0*glowMul,10.0,d0);          // main radial glow
         v0*=smoothstep(r0*1.05,r0,len);        // hard-ish cutoff just outside the radius
         float innerFade=smoothstep(r0*0.8,r0*0.95,len);  // fade near the center
         v0*=mix(innerFade,1.0,bgLum*0.7);
-        float cl=cos(ang+iTime*2.0)*0.5+0.5;  // angular color blend (rotates over time)
-        float a2=iTime*-1.0;vec2 pos=vec2(cos(a2),sin(a2))*r0;float d=distance(uv,pos);  // orbiting light
-        float v1=light2(1.5,5.0,d);v1*=light1(1.0,50.0,d0);  // highlight with quick falloff
-        float v2=smoothstep(1.0,mix(innerRadius,1.0,n0*0.5),len);  // outer fade mask
+        // ── speedMul also affects the angular color rotation ──
+        float cl=cos(ang+iTime*2.0*speedMul)*0.5+0.5;  // angular color blend (rotates over time)
+        // ── orbitSpeed controls the orbiting highlight ──
+        float a2=iTime*-1.0*orbitSpeed;vec2 pos=vec2(cos(a2),sin(a2))*r0;float d=distance(uv,pos);  // orbiting light
+        float v1=light2(1.5*glowMul,5.0,d);v1*=light1(1.0,50.0,d0);  // highlight with quick falloff
+        float v2=smoothstep(1.0,mix(innerRadius,1.0,nScaled*0.5),len);  // outer fade mask
         float v3=smoothstep(innerRadius,mix(innerRadius,1.0,0.5),len);  // inner→outer ramp
         vec3 colBase=mix(c1,c2,cl);  // angular purple↔cyan blend
         float fadeAmt=mix(1.0,0.1,bgLum);
@@ -158,6 +223,9 @@ class OrbRenderer {
         // Wavy UV distortion driven by 'hover' (0→1 when active)
         uv.x+=hover*hoverIntensity*0.1*sin(uv.y*10.0+iTime);
         uv.y+=hover*hoverIntensity*0.1*sin(uv.x*10.0+iTime);
+        // ── waveAmp: additional high-frequency waveform distortion (listening effect) ──
+        uv.x+=waveAmp*sin(uv.y*20.0+iTime*4.0)*0.15;
+        uv.y+=waveAmp*cos(uv.x*15.0+iTime*3.5)*0.1;
         return draw(uv);
     }
 
@@ -215,7 +283,10 @@ class OrbRenderer {
         gl.vertexAttribPointer(uvLoc, 2, gl.FLOAT, false, 0, 0);
 
         this.u = {};
-        ['iTime','iResolution','hue','hover','rot','hoverIntensity','backgroundColor'].forEach(name => {
+        [
+            'iTime','iResolution','hue','hover','rot','hoverIntensity','backgroundColor',
+            'speedMul','noiseMul','glowMul','waveAmp','orbitSpeed'
+        ].forEach(name => {
             this.u[name] = gl.getUniformLocation(this.pgm, name);
         });
 
@@ -241,27 +312,141 @@ class OrbRenderer {
         const dt = this.lastTs ? t - this.lastTs : 0.016;
         this.lastTs = t;
 
-        this.currentHover += (this.targetHover - this.currentHover) * Math.min(dt * 4, 1);
+        // ── Smooth lerp all animated properties toward their targets ──
+        const alpha = Math.min(dt * this.lerpRate, 1);
+        this.currentHover      += (this.targetHover      - this.currentHover)      * alpha;
+        this.currentSpeedMul   += (this.targetSpeedMul   - this.currentSpeedMul)   * alpha;
+        this.currentNoiseMul   += (this.targetNoiseMul   - this.currentNoiseMul)   * alpha;
+        this.currentHueShift   += (this.targetHueShift   - this.currentHueShift)   * alpha;
+        this.currentGlowMul    += (this.targetGlowMul    - this.currentGlowMul)    * alpha;
+        this.currentWaveAmp    += (this.targetWaveAmp    - this.currentWaveAmp)     * alpha;
+        this.currentOrbitSpeed += (this.targetOrbitSpeed  - this.currentOrbitSpeed) * alpha;
+        this.currentRotSpeed   += (this.targetRotSpeed   - this.currentRotSpeed)   * alpha;
 
-        if (this.currentHover > 0.5) this.currentRot += dt * 0.3;
+        // Accumulate rotation based on current rotation speed
+        this.currentRot += dt * this.currentRotSpeed;
 
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.useProgram(this.pgm);
         gl.uniform1f(this.u.iTime, t);
         gl.uniform3f(this.u.iResolution, this.canvas.width, this.canvas.height, this.canvas.width / this.canvas.height);
-        gl.uniform1f(this.u.hue, this.hue);
+        gl.uniform1f(this.u.hue, this.baseHue + this.currentHueShift);
         gl.uniform1f(this.u.hover, this.currentHover);
         gl.uniform1f(this.u.rot, this.currentRot);
         gl.uniform1f(this.u.hoverIntensity, this.hoverIntensity);
         gl.uniform3f(this.u.backgroundColor, this.bgColor[0], this.bgColor[1], this.bgColor[2]);
+        // ── New state-driven uniforms ──
+        gl.uniform1f(this.u.speedMul, this.currentSpeedMul);
+        gl.uniform1f(this.u.noiseMul, this.currentNoiseMul);
+        gl.uniform1f(this.u.glowMul, this.currentGlowMul);
+        gl.uniform1f(this.u.waveAmp, this.currentWaveAmp);
+        gl.uniform1f(this.u.orbitSpeed, this.currentOrbitSpeed);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
 
-    setActive(active) {
-        this.targetHover = active ? 1.0 : 0.0;
+    /* ── setState: transition the orb to a named state ──
+     * Valid states: idle, listening, thinking, searching, working, speaking
+     * Transitions are smooth — the render loop lerps all properties.
+     */
+    setState(name) {
+        const preset = ORB_STATES[name];
+        if (!preset) {
+            console.warn(`[Orb] Unknown state "${name}", ignoring.`);
+            return;
+        }
+        this.stateName = name;
+        this.targetHover      = preset.hover;
+        this.targetSpeedMul   = preset.speedMul;
+        this.targetNoiseMul   = preset.noiseMul;
+        this.targetHueShift   = preset.hue;
+        this.targetGlowMul    = preset.glowMul;
+        this.targetWaveAmp    = preset.waveAmp;
+        this.targetOrbitSpeed = preset.orbitSpeed;
+        this.targetRotSpeed   = preset.rotSpeed;
+
+        // Update CSS class on the container for per-state outer glow
         const ctn = this.container;
-        if (active) ctn.classList.add('active');
-        else ctn.classList.remove('active');
+        // Remove all orb state classes
+        ctn.classList.remove('active', 'speaking',
+            'orb-idle', 'orb-listening', 'orb-thinking',
+            'orb-searching', 'orb-working', 'orb-speaking');
+        if (name !== 'idle') {
+            ctn.classList.add('active');
+        }
+        ctn.classList.add('orb-' + name);
+    }
+
+    /* ── setStateInstant: jump to a state with zero lerp delay ──
+     * Used by the dashboard for real-time preview. Sets BOTH current
+     * and target values so the change is visible immediately.
+     */
+    setStateInstant(name) {
+        const preset = ORB_STATES[name];
+        if (!preset) return;
+        this.stateName = name;
+
+        // Set both current AND target — no lerp needed
+        this.targetHover      = this.currentHover      = preset.hover;
+        this.targetSpeedMul   = this.currentSpeedMul   = preset.speedMul;
+        this.targetNoiseMul   = this.currentNoiseMul   = preset.noiseMul;
+        this.targetHueShift   = this.currentHueShift   = preset.hue;
+        this.targetGlowMul    = this.currentGlowMul    = preset.glowMul;
+        this.targetWaveAmp    = this.currentWaveAmp     = preset.waveAmp;
+        this.targetOrbitSpeed = this.currentOrbitSpeed  = preset.orbitSpeed;
+        this.targetRotSpeed   = this.currentRotSpeed    = preset.rotSpeed;
+
+        // Update CSS classes (only if not already on this state to avoid thrashing)
+        const ctn = this.container;
+        if (!ctn.classList.contains('orb-' + name)) {
+            ctn.classList.remove('active', 'speaking',
+                'orb-idle', 'orb-listening', 'orb-thinking',
+                'orb-searching', 'orb-working', 'orb-speaking');
+            if (name !== 'idle') ctn.classList.add('active');
+            ctn.classList.add('orb-' + name);
+        }
+    }
+
+    /* ── setProperty: update a single shader property instantly ──
+     * Used during dashboard slider drag for real-time feedback.
+     * No CSS class changes, no full state re-read — just one value.
+     *   key: one of 'speedMul','noiseMul','glowMul','waveAmp','orbitSpeed','rotSpeed','hue','hover'
+     */
+    setProperty(key, value) {
+        const propMap = {
+            speedMul:   ['targetSpeedMul',   'currentSpeedMul'],
+            noiseMul:   ['targetNoiseMul',   'currentNoiseMul'],
+            glowMul:    ['targetGlowMul',    'currentGlowMul'],
+            waveAmp:    ['targetWaveAmp',    'currentWaveAmp'],
+            orbitSpeed: ['targetOrbitSpeed', 'currentOrbitSpeed'],
+            rotSpeed:   ['targetRotSpeed',   'currentRotSpeed'],
+            hue:        ['targetHueShift',   'currentHueShift'],
+            hover:      ['targetHover',      'currentHover'],
+        };
+        const entry = propMap[key];
+        if (!entry) return;
+        this[entry[0]] = value;  // target
+        this[entry[1]] = value;  // current (instant)
+    }
+
+    /* ── Backward compatibility: setActive maps to speaking/idle ── */
+    setActive(active) {
+        this.setState(active ? 'speaking' : 'idle');
+    }
+
+    /* ── applyGlobals: dashboard can update global params at runtime ── */
+    applyGlobals(config) {
+        if (config.lerpRate != null) this.lerpRate = config.lerpRate;
+        if (config.baseHue != null) this.baseHue = config.baseHue;
+        if (config.orbSize != null) {
+            const sz = config.orbSize + 'px';
+            this.container.style.width = sz;
+            this.container.style.height = sz;
+            this._resize();
+        }
+        if (config.idleOpacity != null) {
+            // Update idle opacity CSS custom property
+            this.container.style.setProperty('--orb-idle-opacity', config.idleOpacity);
+        }
     }
 
     destroy() {

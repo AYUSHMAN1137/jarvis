@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from typing import Any, Callable, Dict, List, Optional
 
 import config as _cfg
@@ -34,6 +34,9 @@ from app.services.debug_logger import dbg
 logger = logging.getLogger("J.A.R.V.I.S")
 
 _ENABLED = bool(getattr(_cfg, "PHASE6_ENABLED", True))
+# How much of the subject words must overlap before two phrasings are treated as
+# the same command. High on purpose: a cache hit executes something.
+_FUZZY_MIN_CORE = float(getattr(_cfg, "CACHE_PARAPHRASE_MIN_CORE", 0.7))
 
 
 class Phase6Coordinator:
@@ -58,6 +61,10 @@ class Phase6Coordinator:
         self._counters = {"hits": 0, "misses": 0, "promotions": 0, "evictions": 0}
         self._lock = threading.RLock()
         self._pending_executions: Dict[str, Dict[str, Any]] = {}
+        # M13 §4.4: normalized command -> did the ORIGINAL utterance carry its own
+        # meaning? Set by the chat layer from the resolver's `self_contained`.
+        # Bounded; an unknown command is simply never promoted.
+        self._eligibility: "OrderedDict[str, bool]" = OrderedDict()
         self._started_at = time.time()
 
     # -- lifecycle ------------------------------------------------------- #
@@ -82,6 +89,20 @@ class Phase6Coordinator:
             except Exception as e:  # noqa: BLE001
                 logger.warning("[CACHE] bus wiring failed (cache still usable): %s", e)
                 self.bus = None
+            # Self-heal on boot: drop any stored entry whose action cannot satisfy
+            # the command it is keyed on. Without this, one bad promotion is
+            # permanent -- e.g. "turn off night light" cached as "open Settings"
+            # would keep replaying and keep reporting success.
+            try:
+                purged = self.cache.purge_mismatched()
+                if purged:
+                    dbg.cache_event("startup audit purged", "", {
+                        "count": len(purged),
+                        "entries": "; ".join(f"{p['trigger']} -> {p['tools']}"
+                                             for p in purged[:5]),
+                    })
+            except Exception as e:  # noqa: BLE001
+                logger.debug("[CACHE] startup audit skipped: %s", e)
             self.started = True
             logger.info("[CACHE] Phase 6 online -- verified-only command cache ready.")
         except Exception as e:  # noqa: BLE001 - never block startup
@@ -108,6 +129,63 @@ class Phase6Coordinator:
             return bool(registry.is_dangerous(tool))
         except Exception:  # noqa: BLE001
             return True
+
+    def _is_uncacheable(self, tool: Any) -> bool:
+        """True when a tool declares verification={"cacheable": False}.
+
+        Read-only tools now verify as PASS (there is no side effect to check),
+        which makes them eligible for promotion for the first time. Most are
+        time-varying -- battery level, process list, inbox -- so replaying a
+        stored answer would be worse than not caching at all. Opting out is a
+        property of the tool, declared in its own metadata.
+        """
+        if not tool:
+            return False
+        try:
+            from app.services.agent.tool_registry import registry
+            spec = registry.get(tool)
+            if spec is None:
+                return False
+            return (getattr(spec, "verification", {}) or {}).get("cacheable") is False
+        except Exception:  # noqa: BLE001
+            return False
+
+    def note_eligibility(self, command: Any, self_contained: bool) -> None:
+        """Record whether this turn's ORIGINAL utterance stood on its own.
+
+        This is what makes speed *earned* rather than authored: a phrasing you use
+        repeatedly, that has been proven to work, replays instantly -- but "close
+        it" can never be promoted no matter how often it succeeds, because
+        replaying it later would act on the wrong thing.
+        """
+        try:
+            trigger = CommandCache.normalize(command)
+            if not trigger:
+                return
+            with self._lock:
+                self._eligibility[trigger] = bool(self_contained)
+                self._eligibility.move_to_end(trigger)
+                while len(self._eligibility) > 200:
+                    self._eligibility.popitem(last=False)
+        except Exception as e:  # noqa: BLE001
+            logger.debug("[CACHE] eligibility note failed: %s", e)
+
+    def _is_self_contained(self, command: Any) -> bool:
+        """True when this command may be promoted at all (M13 §4.4).
+
+        Defaults to False for an unrecorded command: not knowing whether a
+        phrasing depends on context is not a licence to replay it later.
+        """
+        if not bool(getattr(_cfg, "CACHE_REQUIRE_SELF_CONTAINED", True)):
+            return True
+        try:
+            trigger = CommandCache.normalize(command)
+            if not trigger:
+                return False
+            with self._lock:
+                return bool(self._eligibility.get(trigger, False))
+        except Exception:  # noqa: BLE001
+            return False
 
     def _is_referential(self, text: Any) -> bool:
         """Referential commands ("close it", "the second one") depend on context
@@ -175,6 +253,8 @@ class Phase6Coordinator:
                 return
 
             # --- safety gates before caching ---
+            if not self._is_self_contained(user_message):
+                return
             if self._is_referential(user_message):
                 return
             steps = payload.get("steps") or []
@@ -182,6 +262,8 @@ class Phase6Coordinator:
             if not tools:
                 return
             if any(self._is_dangerous(t) for t in tools):
+                return
+            if any(self._is_uncacheable(t) for t in tools):
                 return
 
             if len(steps) == 1:
@@ -272,8 +354,16 @@ class Phase6Coordinator:
         if not user_message or self._is_referential(user_message):
             dbg.cache_event("not promoted", user_message, {"reason": "context-dependent command"})
             return
+        if not self._is_self_contained(user_message):
+            dbg.cache_event("not promoted", user_message, {
+                "reason": "the original utterance did not stand on its own"})
+            return
         if any(self._is_dangerous(s.get("tool")) for s in steps):
             dbg.cache_event("not promoted", user_message, {"reason": "dangerous action"})
+            return
+        if any(self._is_uncacheable(s.get("tool")) for s in steps):
+            dbg.cache_event("not promoted", user_message,
+                            {"reason": "tool opted out of caching (time-varying result)"})
             return
         try:
             from app.services.agent.tool_registry import registry
@@ -319,6 +409,22 @@ class Phase6Coordinator:
                 })
                 return None
             entry = self.cache.get(command)
+            matched_via = "exact"
+            if entry is None:
+                # Paraphrase pass. Exact-string keying is why this cache scored no
+                # hits at all in real use: nobody phrases a command identically
+                # twice. The signature matcher keeps verb/state/number differences
+                # apart, so "open notepad" can never be served from "close notepad".
+                similar = self.cache.get_similar(command, min_core=_FUZZY_MIN_CORE)
+                if similar is not None:
+                    entry, matched_trigger, score = similar
+                    matched_via = f"paraphrase({score:.2f}) of '{matched_trigger}'"
+                    dbg.cache_event("paraphrase hit", str(command or ""), {
+                        "matched": matched_trigger, "score": score,
+                        "kind": entry.get("kind", ""),
+                    })
+                    logger.info("[CACHE] paraphrase hit: '%.50s' ~= '%.50s' (%.2f)",
+                                str(command), matched_trigger, score)
             if entry and not self._entry_compatible(entry):
                 self.cache.evict(command)
                 self._bump("evictions")
@@ -328,10 +434,10 @@ class Phase6Coordinator:
                 entry = None
             if entry:
                 self._bump("hits")
-                self.cache.record_hit(command)
+                self.cache.record_hit(entry.get("trigger") or command)
                 self._note("hit", CommandCache.normalize(command), entry.get("kind", ""))
                 dbg.cache_event("hit", str(command or ""), {
-                    "kind": entry.get("kind", ""),
+                    "kind": entry.get("kind", ""), "matched_via": matched_via,
                 })
             else:
                 self._bump("misses")

@@ -44,11 +44,8 @@ class SkillStore:
         self._conn: Optional[sqlite3.Connection] = None
         self.enabled = False
         try:
-            self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
-            try:
-                self._conn.execute("PRAGMA journal_mode=WAL")
-            except Exception:  # noqa: BLE001 - WAL is an optimization, not required
-                pass
+            from app.services.db import open_db
+            self._conn = open_db(self._db_path, label="skills")
             self._init_schema()
             self.enabled = True
             logger.info("[SKILL] store ready (%s, N=%d).", self._db_path, self.min_repeats)

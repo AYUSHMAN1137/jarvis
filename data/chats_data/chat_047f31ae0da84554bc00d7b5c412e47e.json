@@ -1,0 +1,93 @@
+{
+  "session_id": "047f31ae-0da8-4554-bc00-d7b5c412e47e",
+  "messages": [
+    {
+      "role": "user",
+      "content": "hi"
+    },
+    {
+      "role": "assistant",
+      "content": "Hello, Ayush. How can I assist you today?"
+    },
+    {
+      "role": "user",
+      "content": "Remind me to drink water in 5 minutes"
+    },
+    {
+      "role": "assistant",
+      "content": "Okay, I've set a reminder for you to drink water in 5 minutes from now, at 9:35 PM. I'll notify you then."
+    },
+    {
+      "role": "user",
+      "content": "How's the weather today?"
+    },
+    {
+      "role": "assistant",
+      "content": "In Dehradun it’s about 78 °F (26 °C) with light rain and fog, humidity around 92 %, and a gentle breeze; temperatures will rise to roughly 82 °F (28 °C) this afternoon before cooling to around 74 °F (23 °C) this evening."
+    },
+    {
+      "role": "user",
+      "content": "Set a reminder to call mom tomorrow at 9 AM"
+    },
+    {
+      "role": "assistant",
+      "content": "I've set a reminder for you to call mom tomorrow at 9 AM."
+    },
+    {
+      "role": "user",
+      "content": "Remind me to take medicine at 10 PM today"
+    },
+    {
+      "role": "assistant",
+      "content": "Okay, I've set a reminder for you to take medicine at 10 PM today."
+    },
+    {
+      "role": "user",
+      "content": "Set a daily reminder to exercise at 7 AM"
+    },
+    {
+      "role": "assistant",
+      "content": "Alright, I've set a daily reminder for you to exercise at 7 AM."
+    },
+    {
+      "role": "user",
+      "content": "Remind me every weekday at 9 AM to check emails"
+    },
+    {
+      "role": "assistant",
+      "content": "I've set a reminder for you to check emails every weekday at 9 AM."
+    },
+    {
+      "role": "user",
+      "content": "Show me my reminders"
+    },
+    {
+      "role": "assistant",
+      "content": "Done."
+    },
+    {
+      "role": "user",
+      "content": "List all upcoming reminders"
+    },
+    {
+      "role": "assistant",
+      "content": "You have 3 active reminders:\n• Exercise — 2026-07-30T07:00:00+05:30 🔁 daily\n• Call mom — 2026-07-30T09:00:00+05:30\n• Check emails — 2026-07-30T09:00:00+05:30 🔁 weekdays"
+    },
+    {
+      "role": "user",
+      "content": "List all upcoming reminders"
+    },
+    {
+      "role": "assistant",
+      "content": "You have 3 active reminders:\n• Exercise — 2026-07-30T07:00:00+05:30 🔁 daily\n• Call mom — 2026-07-30T09:00:00+05:30\n• Check emails — 2026-07-30T09:00:00+05:30 🔁 weekdays"
+    },
+    {
+      "role": "user",
+      "content": "Remind me to drink water in 5 minutes"
+    },
+    {
+      "role": "assistant",
+      "content": ""
+    }
+  ]
+}

@@ -88,11 +88,8 @@ class MemoryService:
             return
         try:
             self._ensure_files()
-            self._conn = sqlite3.connect(str(MEMORY_DB_PATH), check_same_thread=False)
-            try:
-                self._conn.execute("PRAGMA journal_mode=WAL")
-            except Exception:  # noqa: BLE001 - WAL is an optimization, not required
-                pass
+            from app.services.db import open_db
+            self._conn = open_db(MEMORY_DB_PATH, label="memory")
             self._init_schema()
             logger.info("[MEMORY] Ready (%s).", self.status())
         except Exception as e:  # noqa: BLE001
@@ -341,12 +338,23 @@ class MemoryService:
                 aid = cur.lastrowid
                 text = f"used {tool}" + (f" on {target}" if target else "")
                 self._fts_index("action", aid, text)
-                # keep only the most recent N actions
-                c.execute(
-                    "DELETE FROM actions WHERE id NOT IN "
-                    "(SELECT id FROM actions ORDER BY id DESC LIMIT ?)",
-                    (MEMORY_MAX_ACTIONS,),
+                # Keep only the most recent N actions in the hot table, but move
+                # the older ones to actions_archive instead of dropping them --
+                # this log is the raw material Phase 8 learns habits from, and
+                # once deleted that history cannot be rebuilt.
+                overflow = (
+                    "SELECT id FROM actions WHERE id NOT IN "
+                    "(SELECT id FROM actions ORDER BY id DESC LIMIT ?)"
                 )
+                try:
+                    c.execute("CREATE TABLE IF NOT EXISTS actions_archive "
+                              "AS SELECT * FROM actions WHERE 0")
+                    c.execute(f"INSERT INTO actions_archive SELECT * FROM actions "
+                              f"WHERE id IN ({overflow})", (MEMORY_MAX_ACTIONS,))
+                except Exception as _arch:  # noqa: BLE001 - archiving is best-effort
+                    logger.debug("[MEMORY] action archive skipped: %s", _arch)
+                c.execute(f"DELETE FROM actions WHERE id IN ({overflow})",
+                          (MEMORY_MAX_ACTIONS,))
                 if self._fts:
                     c.execute(
                         "DELETE FROM mem_fts WHERE ref_type='action' AND ref_id NOT IN "

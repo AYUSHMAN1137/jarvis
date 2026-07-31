@@ -1,0 +1,13 @@
+{
+  "session_id": "3705258e-ef4c-4bd2-97da-6efa6a32f95a",
+  "messages": [
+    {
+      "role": "user",
+      "content": "."
+    },
+    {
+      "role": "assistant",
+      "content": "I didn't catch that. Could you say it again?"
+    }
+  ]
+}

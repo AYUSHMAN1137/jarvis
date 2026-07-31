@@ -45,6 +45,38 @@ _IDEMPOTENT_SAFE = {
 }
 
 
+# Verification families whose actions are idempotent by construction: opening
+# something already open, re-applying a toggle that already holds, re-reading
+# state, or re-dispatching a browser navigation are all harmless no-ops.
+# Deliberately excludes "input", "file" and "ui" -- typing or saving twice is a
+# real duplicate effect, so those are never repeated on a possibly-false FAIL.
+_IDEMPOTENT_FAMILIES = {"open", "close", "toggle", "query", "frontend"}
+
+
+def retry_is_safe(tool: str) -> bool:
+    """True when re-running ``tool`` cannot cause a damaging or duplicate effect.
+
+    Module-level so the turn-level retry (M13 §3.4) and the background Learner
+    share exactly one definition. Decided from the tool's own declared metadata
+    (``dangerous`` + ``verification.family``) rather than from a name list, so a
+    new tool is classified correctly the moment it is registered.
+    """
+    name = (tool or "").strip().lower()
+    if not name or name in _IRREVERSIBLE:
+        return False
+    if name in _IDEMPOTENT_SAFE:
+        return True
+    try:
+        from app.services.agent.tool_registry import registry
+        spec = registry.get(name)
+        if spec is None or bool(getattr(spec, "dangerous", True)):
+            return False
+        family = str((getattr(spec, "verification", {}) or {}).get("family") or "")
+    except Exception:  # noqa: BLE001 - unknown risk is not safe
+        return False
+    return family in _IDEMPOTENT_FAMILIES
+
+
 class Learner:
     def __init__(self, bus=None, registry=None,
                  verify_fn: Optional[Callable[[str, dict], Any]] = None,

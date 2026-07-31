@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sqlite3
 import threading
 import time
@@ -78,6 +77,9 @@ class ProactiveEngine:
         self._last_suggest_at = 0.0
         self._counters = {"events": 0, "suggested": 0, "suppressed": 0,
                           "accepted": 0, "dismissed": 0, "auto_acted": 0}
+        # Section 12: event deduplication tracking
+        self._last_event_times: Dict[str, float] = {}
+        self._context_cooldowns: Dict[str, float] = {}
 
     def start(self) -> None:
         if not self.enabled:
@@ -119,13 +121,8 @@ class ProactiveEngine:
     def _init_db(self) -> None:
         if not self._db_path:
             return
-        try:
-            d = os.path.dirname(str(self._db_path))
-            if d:
-                os.makedirs(d, exist_ok=True)
-        except Exception:  # noqa: BLE001
-            pass
-        self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+        from app.services.db import open_db
+        self._conn = open_db(self._db_path, label="proactive")
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS proactive_suggestions ("
             "id TEXT PRIMARY KEY, created_at REAL, trigger_kind TEXT, "
@@ -189,6 +186,21 @@ class ProactiveEngine:
             if not context:
                 return None
             now = self._clock()
+            # Section 12.2: dedup events by type + state fingerprint + time window
+            dedup_key = f"{event_type}:{context}"
+            dedup_window = self.min_interval / 3  # deduplicate rapid same-state events
+            last_event = self._last_event_times.get(dedup_key, 0.0)
+            if (now - last_event) < dedup_window:
+                self._bump("suppressed")
+                return None
+            self._last_event_times[dedup_key] = now
+            # Section 12.3: per-context cooldown
+            context_cooldown_key = f"ctx:{context}"
+            last_context = self._context_cooldowns.get(context_cooldown_key, 0.0)
+            if (now - last_context) < self.min_interval:
+                self._bump("suppressed")
+                return None
+            # Global rate limit
             if (now - self._last_suggest_at) < self.min_interval:
                 self._bump("suppressed")
                 return None
@@ -198,6 +210,11 @@ class ProactiveEngine:
             best = habits[0]
             action = (best.get("action") or best.get("tool") or "").strip()
             if not action:
+                return None
+            # Section 12.4: minimum confidence check
+            confidence = float(best.get("confidence", 0))
+            if confidence < 0.3:
+                self._bump("suppressed")
                 return None
             mode = self.get_consent(action)
             if mode == CONSENT_DENY:
@@ -210,10 +227,15 @@ class ProactiveEngine:
             command = best.get("command") or {"tool": action, "args": best.get("args") or {}}
             sug = self._create_suggestion(event_type, context, action, text, command)
             self._last_suggest_at = now
+            self._context_cooldowns[context_cooldown_key] = now
             self._bump("suggested")
             if self.auto_act and mode == CONSENT_ALLOW:
                 sug["auto"] = True
+                sug["reason"] = f"Habit: {confidence:.0%} confidence after {best.get('count', 0)} observations"
                 self._bump("auto_acted")
+            # Section 12.5: add reason for all suggestions
+            if "reason" not in sug:
+                sug["reason"] = f"You usually do this ({best.get('count', 0)} times observed)"
             return sug
         except Exception as e:  # noqa: BLE001
             logger.debug("[PROACTIVE] on_event failed: %s", e)

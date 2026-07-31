@@ -1,0 +1,21 @@
+{
+  "session_id": "7cbb1626-f45b-44fe-ac7a-a5507dff27f5",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Tell me a fun fact"
+    },
+    {
+      "role": "assistant",
+      "content": "A honeybee can recognize human faces, just like we do with other people."
+    },
+    {
+      "role": "user",
+      "content": "that's cool"
+    },
+    {
+      "role": "assistant",
+      "content": "Glad you liked it! Let me know if you want another fun fact."
+    }
+  ]
+}

@@ -19,6 +19,54 @@ class GmailService:
     def is_configured(self) -> bool:
         return self._oauth.is_configured()
 
+    def send_message(self, to: str, subject: str, body: str,
+                     cc: str = "") -> str:
+        """Send a plain-text email. Returns a confirmation containing the id.
+
+        Raises on failure so the tool layer can turn it into an ERROR string --
+        a silent "sent" for a message that never left would be the worst
+        possible outcome here.
+        """
+        from email.message import EmailMessage
+
+        recipients = [a.strip() for a in re.split(r"[,;]", to or "") if a.strip()]
+        if not recipients:
+            raise ValueError("no recipient given")
+        for address in recipients:
+            if "@" not in address or " " in address:
+                raise ValueError(f"'{address}' is not a valid email address")
+
+        message = EmailMessage()
+        message["To"] = ", ".join(recipients)
+        if cc.strip():
+            message["Cc"] = cc.strip()
+        message["Subject"] = (subject or "").strip()
+        message.set_content(body or "")
+
+        encoded = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        service = self._get_service()
+        sent = service.users().messages().send(
+            userId="me", body={"raw": encoded}).execute()
+
+        message_id = sent.get("id", "")
+        logger.info("[GMAIL] Sent message %s to %d recipient(s)",
+                    message_id, len(recipients))
+        return f"Sent to {', '.join(recipients)} (id {message_id})."
+
+    def find_sent_message(self, subject: str, max_results: int = 5) -> bool:
+        """True when a message with this subject is in Sent. Used to verify."""
+        needle = (subject or "").strip().lower()
+        if not needle:
+            return False
+        service = self._get_service(allow_interactive=False)
+        result = service.users().messages().list(
+            userId="me", labelIds=["SENT"], maxResults=max_results).execute()
+        for entry in result.get("messages", []):
+            details = self._get_message_details(service, entry.get("id", ""))
+            if needle in str(details.get("subject", "")).lower():
+                return True
+        return False
+
     def get_inbox_summary(self, max_results: int = 5) -> str:
         service = self._get_service()
         result = service.users().messages().list(

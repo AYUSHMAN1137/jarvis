@@ -1,4 +1,8 @@
-"""Typed, schema-versioned contracts for every JARVIS execution path."""
+"""Typed, schema-versioned contracts for every JARVIS execution path.
+
+Section 5 of the implementation plan: canonical data contracts shared by every
+module.  Serialization methods produce dictionaries for SSE and the event bus.
+"""
 from __future__ import annotations
 
 import time
@@ -12,6 +16,39 @@ SCHEMA_VERSION = 1
 def _id() -> str:
     return uuid.uuid4().hex
 
+
+def _event_id() -> str:
+    """Globally-unique event ID (Section 5.6)."""
+    return uuid.uuid4().hex
+
+
+# ---------------------------------------------------------------------------
+# Section 5.6 -- Event envelope helper
+# ---------------------------------------------------------------------------
+def event_envelope(
+    event_type: str,
+    execution_id: str = "",
+    action_id: str = "",
+    **extra: Any,
+) -> Dict[str, Any]:
+    """Build a schema-versioned event dict for cross-module publishing."""
+    env: Dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "event_id": _event_id(),
+        "event_type": event_type,
+        "occurred_at": time.time(),
+    }
+    if execution_id:
+        env["execution_id"] = execution_id
+    if action_id:
+        env["action_id"] = action_id
+    env.update(extra)
+    return env
+
+
+# ---------------------------------------------------------------------------
+# Section 5 -- Typed contracts
+# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class ConfirmationGrant:
@@ -51,6 +88,7 @@ class ActionSpec:
     verification: Dict[str, Any] = field(default_factory=dict)
     context_dependencies: List[str] = field(default_factory=list)
     fallback: Optional[Dict[str, Any]] = None
+    verification_barrier: bool = False
     schema_version: int = SCHEMA_VERSION
 
 
@@ -73,14 +111,45 @@ class ActionResult:
         return asdict(self)
 
 
+# Section 5.4 -- VerificationResult
+@dataclass
+class VerificationResult:
+    """Outcome of verifying one action after execution."""
+    execution_id: str = ""
+    action_id: str = ""
+    verdict: str = "UNKNOWN"       # PASS | FAIL | UNKNOWN
+    reason: str = ""
+    evidence: str = ""
+    source: str = "none"           # watcher | vision | tool | none
+    confidence: float = 0.0
+    verified_at: float = field(default_factory=time.time)
+    state_fingerprint: str = ""
+    schema_version: int = SCHEMA_VERSION
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @property
+    def is_pass(self) -> bool:
+        return self.verdict == "PASS"
+
+    @property
+    def is_fail(self) -> bool:
+        return self.verdict == "FAIL"
+
+
+# Section 5.5 -- ExecutionManifest
 @dataclass
 class ExecutionManifest:
     context: ExecutionContext
     actions: List[ActionSpec] = field(default_factory=list)
     results: List[ActionResult] = field(default_factory=list)
+    verifications: List[VerificationResult] = field(default_factory=list)
+    expected_verification_ids: List[str] = field(default_factory=list)
     status: str = "running"
     final_response: str = ""
     completed_at: Optional[float] = None
+    confirmation_history: List[Dict[str, Any]] = field(default_factory=list)
     schema_version: int = SCHEMA_VERSION
 
     @property

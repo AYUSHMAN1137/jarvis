@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sqlite3
 import threading
 import time
@@ -94,17 +93,12 @@ class UserModel:
         self._conn = None
 
     def _init_db(self) -> None:
+        from app.services.db import open_db
         if not self._db_path:
             # In-memory fallback keeps the model usable even with no path.
-            self._conn = sqlite3.connect(":memory:", check_same_thread=False)
+            self._conn = open_db(":memory:", label="user_model(memory)")
         else:
-            try:
-                d = os.path.dirname(str(self._db_path))
-                if d:
-                    os.makedirs(d, exist_ok=True)
-            except Exception:  # noqa: BLE001
-                pass
-            self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+            self._conn = open_db(self._db_path, label="user_model")
         c = self._conn
         c.execute(
             "CREATE TABLE IF NOT EXISTS um_facts ("

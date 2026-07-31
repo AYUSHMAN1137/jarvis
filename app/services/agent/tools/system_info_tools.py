@@ -58,6 +58,7 @@ def _run(cmd, timeout: int = 8) -> subprocess.CompletedProcess:
     ),
     params={},
     category="system",
+    verification={"family": "query", "cacheable": False},
 )
 def battery_status() -> str:
     try:
@@ -92,6 +93,7 @@ def battery_status() -> str:
     ),
     params={},
     category="system",
+    verification={"family": "query", "cacheable": False},
 )
 def system_resources() -> str:
     try:
@@ -128,6 +130,7 @@ def system_resources() -> str:
         }
     },
     category="system",
+    verification={"family": "query", "cacheable": False},
 )
 def list_processes(limit: int = 8) -> str:
     try:
@@ -170,6 +173,7 @@ def list_processes(limit: int = 8) -> str:
     },
     dangerous=True,
     category="system",
+    verification={"family": "close"},
 )
 def kill_process(name: str = "") -> str:
     target = (name or "").strip()
@@ -199,6 +203,7 @@ def kill_process(name: str = "") -> str:
     ),
     params={},
     category="system",
+    verification={"family": "query", "cacheable": False},
 )
 def get_datetime() -> str:
     now = datetime.now().astimezone()
@@ -216,6 +221,7 @@ def get_datetime() -> str:
     ),
     params={},
     category="system",
+    verification={"family": "query", "cacheable": False},
 )
 def network_info() -> str:
     parts = []
@@ -252,6 +258,7 @@ def network_info() -> str:
     ),
     params={},
     category="system",
+    verification={"family": "query", "cacheable": False},
 )
 def list_wifi_networks() -> str:
     try:
@@ -284,6 +291,7 @@ def list_wifi_networks() -> str:
         }
     },
     category="system",
+    verification={"family": "toggle", "capability": "network.wifi"},
 )
 def connect_wifi(name: str = "") -> str:
     profile = (name or "").strip()
@@ -361,6 +369,7 @@ _SETTINGS_URIS = {
         }
     },
     category="system",
+    verification={"family": "open"},
 )
 def open_settings_page(page: str = "") -> str:
     key = (page or "").strip().lower()
@@ -392,6 +401,7 @@ def open_settings_page(page: str = "") -> str:
     params={},
     dangerous=True,
     category="system",
+    verification={"family": "none"},
 )
 def empty_recycle_bin() -> str:
     try:
@@ -418,6 +428,7 @@ def empty_recycle_bin() -> str:
     params={},
     dangerous=True,
     category="system",
+    verification={"family": "none"},
 )
 def hibernate_computer() -> str:
     try:
@@ -439,6 +450,7 @@ def hibernate_computer() -> str:
     params={},
     dangerous=True,
     category="system",
+    verification={"family": "none"},
 )
 def sign_out() -> str:
     try:

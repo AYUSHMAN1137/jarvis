@@ -1,0 +1,13 @@
+{
+  "session_id": "270f013c-922b-4331-b751-ed946efc1f24",
+  "messages": [
+    {
+      "role": "user",
+      "content": "STOP"
+    },
+    {
+      "role": "assistant",
+      "content": "Okay, stopping. Let me know if you need anything else."
+    }
+  ]
+}

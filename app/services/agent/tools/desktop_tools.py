@@ -42,39 +42,60 @@ def _need_gui() -> Optional[str]:
     return None
 
 
-# Common app aliases -> launch command. Anything not listed falls back to
-# `start <name>` which Windows resolves against the PATH / app registry.
-_APP_ALIASES = {
-    "notepad": "notepad",
-    "calculator": "calc",
-    "calc": "calc",
-    "paint": "mspaint",
-    "cmd": "cmd",
-    "command prompt": "cmd",
-    "powershell": "powershell",
-    "explorer": "explorer",
-    "file explorer": "explorer",
-    "task manager": "taskmgr",
-    "control panel": "control",
-    "settings": "start ms-settings:",
-    "chrome": "chrome",
-    "edge": "msedge",
-    "firefox": "firefox",
-    "word": "winword",
-    "excel": "excel",
-    "powerpoint": "powerpnt",
-    "vscode": "code",
-    "vs code": "code",
-    "code": "code",
-    "spotify": "spotify",
-    "snipping tool": "snippingtool",
-}
+# M13 §4.3: the hand-written alias table (`_APP_ALIASES`) and the pronoun set
+# (`_CLOSE_PRONOUNS`) are gone. Both were guesses about language, and every miss
+# needed another line. What replaces them is discovery from the machine itself:
+#   * `_resolve_launch_target` asks Windows what exists (PATH, then the Start
+#     Menu the user launches things from anyway),
+#   * `detect_reference` in the context engine is the single place that knows a
+#     reference when it sees one, and the resolver has usually already turned
+#     "close it" into a concrete app before the tool is ever called.
 
-# Words that mean "the app I just opened" rather than a specific app name.
-_CLOSE_PRONOUNS = {
-    "it", "this", "that", "current", "active", "foreground",
-    "isko", "ise", "is", "ye", "yah", "wo", "woh", "usko", "use",
-}
+
+def _resolve_launch_target(name: str) -> tuple:
+    """Ask Windows what `name` actually is. Returns (command, how).
+
+    Order:
+      1. an executable on PATH -- covers everything Windows ships (notepad, calc,
+         mspaint, explorer, taskmgr, control, powershell, ...) without a table;
+      2. a Start Menu shortcut -- covers apps installed into AppData (Telegram,
+         Discord, WhatsApp, Spotify, VS Code, Office) that are NOT on PATH;
+      3. the bare name, and let Windows' own app-registry resolution try.
+
+    `how` is "path" | "shortcut" | "unknown" and drives the honesty check in
+    open_application: an unknown name that produced no new process is reported as
+    not found rather than as a success.
+    """
+    raw = (name or "").strip()
+    if not raw:
+        return ("", "unknown")
+    import shutil
+    found = shutil.which(raw)
+    if found:
+        return (raw, "path")
+    # Windows apps are commonly asked for without the .exe.
+    found = shutil.which(raw + ".exe")
+    if found:
+        return (raw, "path")
+    shortcut = _find_app_shortcut(raw)
+    if shortcut:
+        return (shortcut, "shortcut")
+    return (raw, "unknown")
+
+
+def _looks_like_reference(text: str) -> bool:
+    """Is this a reference to something rather than a name?
+
+    Delegates to the context engine's `detect_reference`, which is the single
+    owner of reference detection in the codebase. On any problem it returns False
+    so a real app name is never rejected -- the worst case is a taskkill that
+    finds nothing and says so.
+    """
+    try:
+        from app.services.context.context_engine import detect_reference
+        return bool(detect_reference(str(text or "")))
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _resolve_window_reference(ref: str):
@@ -184,24 +205,16 @@ def _find_app_shortcut(name: str) -> Optional[str]:
         }
     },
     category="desktop",
+    verification={"family": "open"},
 )
 def open_application(app_name: str) -> str:
     name = (app_name or "").strip().lower()
     if not name:
         return "ERROR: no app name given."
     dbg.uia_action("open_application", name)
-    # Resolve what to actually launch:
-    #   1) a known alias (notepad -> notepad, vs code -> code, ...)
-    #   2) else a Start Menu shortcut whose name matches -- covers apps installed
-    #      into AppData (Telegram, Discord, WhatsApp, Spotify, ...) that are NOT
-    #      on PATH, so a bare `start "name"` would fail to find them.
-    #   3) else the bare name (let Windows resolve it against PATH / registry)
-    aliased = name in _APP_ALIASES
-    command = _APP_ALIASES.get(name)
-    shortcut = None
-    if command is None:
-        shortcut = _find_app_shortcut(name)
-        command = shortcut or name
+    # Ask the machine what this name is, rather than consulting a table.
+    command, how = _resolve_launch_target(name)
+    discovered = how in ("path", "shortcut")
     # Snapshot running processes BEFORE launch so the watcher can figure out
     # exactly which new process belongs to this app. This is what makes
     # "close it" work later for unknown / UWP apps with no hardcoded map.
@@ -234,18 +247,19 @@ def open_application(app_name: str) -> str:
                 logger.debug("[DESKTOP] launch tracking failed: %s", e)
         else:
             time.sleep(0.6)
-        # Honesty (reliability #1): if we had no alias AND no Start Menu match,
-        # AND the watcher saw NO new process appear, the app almost certainly
-        # isn't installed / couldn't be found -- don't falsely claim success.
+        # Honesty (reliability #1): if Windows did not recognise the name AND the
+        # watcher saw NO new process appear, the app almost certainly isn't there
+        # -- don't falsely claim success.
         if (
             watcher is not None
-            and not aliased
-            and shortcut is None
+            and not discovered
             and (launched is None or not launched.pids)
         ):
             return (
-                f"I couldn't find an app called '{app_name}' on this PC. "
-                "Is it installed? If so, tell me its exact name and I'll try again."
+                f"ERROR: I couldn't find an app called '{app_name}' on this PC — "
+                "it is not on PATH and has no Start Menu entry. If you meant a "
+                "Windows settings page, use open_settings_page instead; if you "
+                "meant a website, use open_website."
             )
         return f"Opened {app_name}."
     except Exception as e:  # noqa: BLE001
@@ -271,6 +285,7 @@ def open_application(app_name: str) -> str:
         }
     },
     category="desktop",
+    verification={"family": "close"},
 )
 def close_application(app_name: str = "") -> str:
     name = (app_name or "").strip().lower()
@@ -289,13 +304,17 @@ def close_application(app_name: str = "") -> str:
             return f"Closed {label}."
     except Exception as e:  # noqa: BLE001
         logger.debug("[DESKTOP] watcher close failed, falling back: %s", e)
-    # 2) Pronoun but the watcher had nothing tracked -> we truly don't know.
-    if not name or name in _CLOSE_PRONOUNS:
+    # 2) A reference the watcher could not resolve -> we truly don't know which
+    #    app is meant, and `taskkill /IM it.exe` is not an answer. Reference
+    #    detection lives in the context engine, the one place that owns it.
+    if not name or _looks_like_reference(name):
         return "I'm not sure which app to close — please tell me the app name."
-    # 3) Fallback: legacy taskkill by alias / executable name.
-    exe = _APP_ALIASES.get(name, name)
-    exe = exe.split()[-1]  # strip any 'start ...' prefix
-    if not exe.endswith(".exe"):
+    # 3) Fallback: taskkill by executable name, resolved from the machine.
+    exe, _how = _resolve_launch_target(name)
+    exe = os.path.basename(exe or name)
+    if exe.lower().endswith(".lnk"):
+        exe = exe[:-4]
+    if not exe.lower().endswith(".exe"):
         exe = f"{exe}.exe"
     try:
         result = subprocess.run(
@@ -325,6 +344,7 @@ def close_application(app_name: str = "") -> str:
         },
     },
     category="desktop",
+    verification={"family": "input"},
 )
 def type_text(text: str, press_enter: bool = False) -> str:
     err = _need_gui()
@@ -357,6 +377,7 @@ def type_text(text: str, press_enter: bool = False) -> str:
         }
     },
     category="desktop",
+    verification={"family": "input"},
 )
 def press_hotkey(keys: str) -> str:
     err = _need_gui()
@@ -401,6 +422,7 @@ def press_hotkey(keys: str) -> str:
         },
     },
     category="desktop",
+    verification={"family": "input"},
 )
 def mouse_click(x: Optional[int] = None, y: Optional[int] = None, button: str = "left") -> str:
     err = _need_gui()
@@ -436,6 +458,7 @@ def mouse_click(x: Optional[int] = None, y: Optional[int] = None, button: str = 
         }
     },
     category="desktop",
+    verification={"family": "input"},
 )
 def scroll(amount: int) -> str:
     err = _need_gui()
@@ -457,6 +480,7 @@ def scroll(amount: int) -> str:
     ),
     params={},
     category="desktop",
+    verification={"family": "file"},
 )
 def take_screenshot() -> str:
     err = _need_gui()
@@ -479,6 +503,7 @@ def take_screenshot() -> str:
     description="Copy the given text to the system clipboard.",
     params={"text": {"type": "string", "description": "Text to copy to clipboard."}},
     category="desktop",
+    verification={"family": "input"},
 )
 def set_clipboard(text: str) -> str:
     try:
@@ -504,6 +529,7 @@ def set_clipboard(text: str) -> str:
     ),
     params={},
     category="desktop",
+    verification={"family": "query", "cacheable": False},
 )
 def get_clipboard() -> str:
     try:
@@ -516,6 +542,35 @@ def get_clipboard() -> str:
         return "The clipboard is empty (or contains non-text content)."
     preview = text if len(text) <= 2000 else text[:2000] + " ...[truncated]"
     return f"Clipboard text: {preview}"
+
+
+@tool(
+    name="clipboard_history",
+    description=(
+        "List the things recently copied to the clipboard, newest first. Use for "
+        "'what did I copy before', 'jo pehle copy kiya tha'. get_clipboard only "
+        "returns the current item."
+    ),
+    params={
+        "limit": {"type": "int", "required": False,
+                  "description": "How many entries to return (default 10, max 20)."},
+    },
+    category="desktop",
+    verification={"family": "query", "cacheable": False},
+)
+def clipboard_history(limit: int = 10) -> str:
+    # Served from the watcher's existing tick -- no extra polling, and the
+    # history is RAM-only so it never lands in a log or on disk.
+    try:
+        from app.services.watcher import get_watcher
+        entries = get_watcher().clipboard_history(limit=min(20, max(1, int(limit or 10))))
+    except Exception as e:  # noqa: BLE001
+        return f"ERROR: clipboard history is unavailable: {e}"
+    if not entries:
+        return ("No clipboard history yet -- it starts filling once you copy "
+                "something while JARVIS is running.")
+    lines = [f"{i}. {entry}" for i, entry in enumerate(entries, 1)]
+    return f"Recent clipboard items ({len(entries)}):\n" + "\n".join(lines)
 
 
 def _activate_window(w) -> None:
@@ -563,6 +618,7 @@ def _activate_window(w) -> None:
         }
     },
     category="desktop",
+    verification={"family": "input"},
 )
 def focus_window(title: str) -> str:
     try:
@@ -604,6 +660,7 @@ def focus_window(title: str) -> str:
         },
     },
     category="desktop",
+    verification={"family": "input"},
 )
 def window_action(title: str, action: str) -> str:
     try:
@@ -645,6 +702,7 @@ def window_action(title: str, action: str) -> str:
     ),
     params={},
     category="desktop",
+    verification={"family": "query", "cacheable": False},
 )
 def list_open_windows() -> str:
     try:

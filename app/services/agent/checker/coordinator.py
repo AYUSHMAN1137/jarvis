@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from typing import Any, Dict, Optional
 
 import config as _cfg
@@ -45,6 +45,25 @@ class Phase4Coordinator:
         # Rolling activity feed for the /dashboard (independent of state_note()).
         self._recent: deque = deque(maxlen=60)
         self._started_at = time.time()
+        # Section 7: verification metrics
+        self._verification_metrics = {
+            "total_pass": 0, "total_fail": 0, "total_unknown": 0,
+            "by_source": {},   # source -> count
+            "timeout_count": 0,
+            "missing_verifier_count": 0,
+            "disagreement_count": 0,  # tool ok but verifier FAIL
+        }
+        # Section 7: frontend action acknowledgements
+        self._pending_dispatches: Dict[str, Dict[str, Any]] = {}
+        # action_id -> ack outcome. Bounded: browser actions are short-lived and
+        # this only has to survive long enough for the Checker to read it.
+        self._dispatch_results: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+        self._dispatch_lock = threading.Lock()
+        # M13 §3.4: verdicts keyed by action_id + an Event per waiter, so a turn
+        # can wait (briefly, boundedly) for the truth before it speaks.
+        self._verdicts: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+        self._verdict_events: Dict[str, threading.Event] = {}
+        self._verdict_lock = threading.Lock()
 
     # -- lifecycle ------------------------------------------------------- #
     def start(self) -> None:
@@ -153,18 +172,104 @@ class Phase4Coordinator:
             logger.debug("[PHASE4] publish_execution_completed failed: %s", e)
 
     # -- surfacing ------------------------------------------------------- #
+    @staticmethod
+    def _failure_message(payload: dict) -> str:
+        """Plain-English line the UI can show the user after a FAIL.
+
+        Verification finishes *after* the reply has been streamed, so JARVIS has
+        already said "done" by the time a FAIL lands. Without this the user is
+        never told -- it isn't lying on purpose, it just ran out of turn. The
+        checker's `reason` strings are already written in plain English
+        ("'Spotify' is still open"), so they carry the correction directly.
+        """
+        reason = str(payload.get("reason") or "").strip()
+        tool = str(payload.get("tool") or "").strip()
+        if not reason:
+            return f"That didn't work — {tool} reported no effect." if tool else ""
+        message = f"Actually, that didn't work — {reason}."
+        evidence = str(payload.get("evidence") or "").strip()
+        if evidence and evidence.lower() not in reason.lower():
+            message += f" ({evidence})"
+        return message
+
+    def _publish_verdict_locally(self, payload: dict) -> None:
+        """Record a verdict by action_id and wake anyone waiting on it."""
+        action_id = str((payload or {}).get("action_id") or "")
+        if not action_id:
+            return
+        with self._verdict_lock:
+            self._verdicts[action_id] = dict(payload or {})
+            while len(self._verdicts) > 300:
+                self._verdicts.popitem(last=False)
+            event = self._verdict_events.get(action_id)
+        if event is not None:
+            event.set()
+
+    def wait_for_verdict(self, action_id: str,
+                         timeout: float = 3.0) -> Optional[Dict[str, Any]]:
+        """Block up to ``timeout`` seconds for one action's verdict.
+
+        Returns the verdict payload, or None on timeout (treated as UNKNOWN by
+        the caller -- never as success). Verification runs on the event bus in a
+        background thread, so without this the verdict always arrived after the
+        reply had already streamed and the only possible correction was a late
+        bubble in the UI.
+        """
+        key = str(action_id or "")
+        if not key:
+            return None
+        with self._verdict_lock:
+            existing = self._verdicts.get(key)
+            if existing is not None:
+                return dict(existing)
+            event = self._verdict_events.get(key)
+            if event is None:
+                event = threading.Event()
+                self._verdict_events[key] = event
+        try:
+            event.wait(max(0.0, float(timeout)))
+        except Exception:  # noqa: BLE001
+            pass
+        with self._verdict_lock:
+            self._verdict_events.pop(key, None)
+            found = self._verdicts.get(key)
+            return dict(found) if found is not None else None
+
     def _remember_verified(self, payload: dict) -> None:
+        self._publish_verdict_locally(payload)
         try:
             self._last_verified = dict(payload or {})
-            self._recent.append({
+            verdict = payload.get("verdict", "")
+            row = {
                 "time": time.time(),
                 "kind": "verified",
                 "tool": payload.get("tool", ""),
-                "verdict": payload.get("verdict", ""),
+                "verdict": verdict,
                 "reason": payload.get("reason", ""),
                 "evidence": payload.get("evidence", ""),
                 "source": payload.get("source", ""),
-            })
+            }
+            if verdict == models.FAIL:
+                row["message"] = self._failure_message(payload)
+            self._recent.append(row)
+            # Section 7: update verification metrics
+            source = payload.get("source", "none")
+            if verdict == models.PASS:
+                self._verification_metrics["total_pass"] += 1
+            elif verdict == models.FAIL:
+                self._verification_metrics["total_fail"] += 1
+                # Disagreement: tool said ok but verifier said FAIL
+                if payload.get("ok", True):
+                    self._verification_metrics["disagreement_count"] += 1
+            else:
+                self._verification_metrics["total_unknown"] += 1
+                reason = payload.get("reason", "")
+                if "no verifier" in reason.lower():
+                    self._verification_metrics["missing_verifier_count"] += 1
+                if "timeout" in reason.lower():
+                    self._verification_metrics["timeout_count"] += 1
+            src_counts = self._verification_metrics.setdefault("by_source", {})
+            src_counts[source] = src_counts.get(source, 0) + 1
         except Exception:  # noqa: BLE001
             pass
 
@@ -203,6 +308,90 @@ class Phase4Coordinator:
             "skills": bool(getattr(self.store, "enabled", False)) if self.store else False,
         }
         return h
+
+    def verification_metrics(self) -> dict:
+        """Section 7: verification metrics for the dashboard."""
+        return dict(self._verification_metrics)
+
+    # -- Section 7: frontend dispatch acknowledgement ------------------- #
+    def register_dispatch(self, dispatch_id: str, action_id: str,
+                         tool: str = "", execution_id: str = "") -> None:
+        """Record that a frontend action was dispatched; awaiting ack.
+
+        Called from ExecutionCoordinator.execute_action, strictly before the
+        payload is handed to the chat layer, so an ack can never arrive for an
+        unknown dispatch.
+        """
+        if not dispatch_id:
+            return
+        with self._dispatch_lock:
+            self._pending_dispatches[dispatch_id] = {
+                "dispatch_id": dispatch_id, "action_id": action_id,
+                "tool": tool, "execution_id": execution_id,
+                "dispatched_at": time.time(), "acknowledged": False,
+            }
+            self._sweep_pending_locked()
+
+    def _sweep_pending_locked(self) -> None:
+        """Drop dispatches nobody will ever acknowledge (browser closed, tab
+        killed). Caller must hold `_dispatch_lock`.
+
+        Without this the dict only ever grew: an unacknowledged dispatch has no
+        other removal path, and the browser is free to simply never answer.
+        """
+        max_age = float(getattr(_cfg, "FRONTEND_DISPATCH_MAX_AGE", 120.0))
+        cutoff = time.time() - max(5.0, max_age)
+        stale = [key for key, value in self._pending_dispatches.items()
+                 if float(value.get("dispatched_at", 0.0)) < cutoff]
+        for key in stale:
+            self._pending_dispatches.pop(key, None)
+
+    def acknowledge_dispatch(self, dispatch_id: str, attempted: bool = True,
+                             accepted: bool = True, error: str = "") -> bool:
+        """Process a frontend acknowledgement. Returns True if matched."""
+        with self._dispatch_lock:
+            pending = self._pending_dispatches.pop(dispatch_id, None)
+            if pending is not None:
+                # Keep the outcome keyed by action_id so the Checker can verify
+                # browser-bound tools (open_website, play_on_youtube, ...). They
+                # have no server-side effect, so this ack is the only evidence
+                # that anything happened at all.
+                action_id = str(pending.get("action_id") or "")
+                if action_id:
+                    self._dispatch_results[action_id] = {
+                        "attempted": bool(attempted), "accepted": bool(accepted),
+                        "error": error[:160] if error else "",
+                        "tool": pending.get("tool", ""), "time": time.time(),
+                    }
+                    while len(self._dispatch_results) > 200:
+                        self._dispatch_results.popitem(last=False)
+        if pending is None:
+            return False
+        self._recent.append({
+            "time": time.time(), "kind": "frontend_ack",
+            "tool": pending.get("tool", ""),
+            "dispatch_id": dispatch_id,
+            "attempted": attempted, "accepted": accepted,
+            "error": error[:120] if error else "",
+        })
+        logger.info("[PHASE4] frontend ack: dispatch=%s attempted=%s accepted=%s",
+                    dispatch_id[:12], attempted, accepted)
+        return True
+
+    def dispatch_result(self, action_id: str) -> Optional[dict]:
+        """Acknowledgement outcome for one dispatched frontend action, if any."""
+        if not action_id:
+            return None
+        with self._dispatch_lock:
+            return self._dispatch_results.get(str(action_id))
+
+    def pending_dispatches(self, max_age: float = 30.0) -> list:
+        """Return dispatches that haven't been acknowledged within max_age."""
+        cutoff = time.time() - max_age
+        with self._dispatch_lock:
+            self._sweep_pending_locked()
+            return [d for d in self._pending_dispatches.values()
+                    if float(d.get("dispatched_at", 0)) >= cutoff]
 
     def state_note(self) -> str:
         """Optional one-liner for the agent's state block (verification + any

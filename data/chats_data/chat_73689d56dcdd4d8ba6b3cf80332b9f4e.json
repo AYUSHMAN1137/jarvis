@@ -1,0 +1,69 @@
+{
+  "session_id": "73689d56-dcdd-4d8b-a6b3-cf80332b9f4e",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello, Jarvis."
+    },
+    {
+      "role": "assistant",
+      "content": "Hello, Ayush. How can I help you today?"
+    },
+    {
+      "role": "user",
+      "content": "Hello, Jarvis."
+    },
+    {
+      "role": "assistant",
+      "content": "Hi again, Ayush. What's on your mind?"
+    },
+    {
+      "role": "user",
+      "content": "How's the weather today?"
+    },
+    {
+      "role": "assistant",
+      "content": "In Dehradun it’s currently about 27 °C (81 °F) with occasional rain or thundershowers and a generally cloudy sky; the high will reach around 29 °C (84 °F) and the low near 23 °C (73 °F) later tonight."
+    },
+    {
+      "role": "user",
+      "content": "How's the weather in Patna?"
+    },
+    {
+      "role": "assistant",
+      "content": "I’m sorry, but I don’t have the current weather details for Patna right now."
+    },
+    {
+      "role": "user",
+      "content": "So do web research."
+    },
+    {
+      "role": "assistant",
+      "content": "I’m sorry, but the web search didn’t return any current weather information for Patna."
+    },
+    {
+      "role": "user",
+      "content": "So how did you tell me the weather of Dehradun and you can't tell the weather of Patna? How is this possible?"
+    },
+    {
+      "role": "assistant",
+      "content": "I have recent weather data for Dehradun in my cache, but I don’t have a current update for Patna, so I can’t provide its exact conditions right now."
+    },
+    {
+      "role": "user",
+      "content": "."
+    },
+    {
+      "role": "assistant",
+      "content": "I didn't catch that. Could you say it again?"
+    },
+    {
+      "role": "user",
+      "content": "."
+    },
+    {
+      "role": "assistant",
+      "content": "I didn't catch that. Could you say it again?"
+    }
+  ]
+}

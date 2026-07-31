@@ -3,6 +3,7 @@
 credentials.json
 database/google_token.json
 data/google_token.json
+**/google_token.json
 
 # Python
 __pycache__/
@@ -30,6 +31,7 @@ Thumbs.db
 
 # Runtime state, caches, and user data
 database/
+data/voice_cache/
 *.db-wal
 *.db-shm
 

@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import logging
 import re
-import sqlite3
 import threading
 import time
 from dataclasses import dataclass, field
@@ -211,7 +210,12 @@ class AliasStore:
                 db_path = None
         if db_path:
             try:
-                self._conn = sqlite3.connect(db_path, check_same_thread=False)
+                # NOTE: this is the *same* file as memory.db. Two live
+                # connections to one database mean a checkpoint can never
+                # truncate the WAL until both are closed -- which is why both
+                # go through the shared registry.
+                from app.services.db import open_db
+                self._conn = open_db(db_path, label="context_aliases")
                 self._conn.execute(
                     """CREATE TABLE IF NOT EXISTS context_aliases(
                         phrase TEXT PRIMARY KEY,
@@ -620,6 +624,76 @@ class ContextRegistry:
         if len(block) > max_chars:
             block = block[:max_chars].rstrip() + " ..."
         return block
+
+    # ---- Section 10: relevance-filtered context API ---- #
+    def get_relevant_context(
+        self,
+        query: str = "",
+        tool_candidates: Optional[Sequence[str]] = None,
+        max_items: int = 8,
+        include_sensitive: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Return relevant context entities for a query and optional tool list.
+
+        Section 10 requirement: context providers declare capability keys,
+        sensitivity level, and freshness. This method selects context by
+        capability and candidate tool metadata rather than app-name conditions.
+
+        Returns a list of dicts with: type, label, handle (filtered), source,
+        relevance_score, is_prompt_safe, is_cache_safe, is_fresh.
+        """
+        if not self._entities:
+            return []
+        now = self._now()
+        query_tokens = set(_tokens(query))
+        type_hint = infer_types_from_text(query) if query else None
+
+        # Score every entity
+        scored = []
+        for entity in self._entities:
+            base_score = self.score(entity, type_hint)
+            # Query-term boost
+            if query_tokens and query_tokens.intersection(_tokens(entity.label)):
+                base_score += 2.0
+            # Tool-candidate type boost
+            if tool_candidates:
+                for tc in tool_candidates:
+                    tc_lower = (tc or "").lower()
+                    if entity.type == "setting" and any(k in tc_lower for k in ("wifi", "bluetooth", "volume", "brightness")):
+                        base_score += 1.5
+                    elif entity.type in ("app", "window") and any(k in tc_lower for k in ("open", "close", "focus")):
+                        base_score += 1.0
+            scored.append((base_score, entity))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        # Sensitivity classification
+        _SENSITIVE_TYPES = {"clipboard"}
+        _STALE_SECONDS = 300.0  # 5 minutes
+
+        results = []
+        for score_val, entity in scored[:max_items]:
+            is_sensitive = entity.type in _SENSITIVE_TYPES
+            if is_sensitive and not include_sensitive:
+                continue
+            is_fresh = (now - entity.last_seen) < _STALE_SECONDS if entity.last_seen > 0 else False
+            # Filter handle for prompt safety: never include full clipboard text
+            safe_handle = dict(entity.handle)
+            if entity.type == "clipboard":
+                safe_handle.pop("text", None)
+                safe_handle["has_content"] = True
+            results.append({
+                "type": entity.type,
+                "label": entity.label,
+                "handle": safe_handle,
+                "source": entity.source,
+                "relevance_score": round(score_val, 2),
+                "is_prompt_safe": entity.type not in _SENSITIVE_TYPES,
+                "is_cache_safe": entity.type in ("setting", "app"),
+                "is_log_safe": entity.type not in _SENSITIVE_TYPES,
+                "is_fresh": is_fresh,
+            })
+        return results
 
 
 # --------------------------------------------------------------------------- #

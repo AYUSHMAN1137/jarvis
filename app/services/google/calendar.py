@@ -135,6 +135,60 @@ class CalendarService:
         when = self._format_event_time(event)
         return f"I deleted the event '{title}' scheduled for {when}."
 
+    def update_event_from_text(self, query: str, new_title: str = "",
+                               new_time: str = "") -> str:
+        """Change the title and/or start time of the event matching `query`.
+
+        Mirrors delete_event_from_text: same matching, and the same refusal to
+        act when several events match, because guessing which one the user meant
+        would silently edit the wrong entry.
+        """
+        clean_query = (query or "").strip()
+        if not clean_query:
+            return "Tell me which event to change."
+        if not new_title.strip() and not new_time.strip():
+            return "Tell me what to change -- a new title, a new time, or both."
+
+        matches = self._list_events(
+            time_min=datetime.now().astimezone() - timedelta(days=365),
+            time_max=datetime.now().astimezone() + timedelta(days=365 * 2),
+            query=clean_query,
+            max_results=10,
+        )
+        if not matches:
+            return f"I couldn't find any event matching '{clean_query}'."
+
+        best_matches = self._pick_best_matches(matches, clean_query)
+        if len(best_matches) > 1:
+            preview = self._format_events(best_matches[:3],
+                                          heading="I found multiple matching events:")
+            return preview + "\nPlease say the exact event title or include the date."
+
+        event = best_matches[0]
+        patch: dict = {}
+        if new_title.strip():
+            patch["summary"] = new_title.strip()
+        if new_time.strip():
+            # Reuse the same natural-language parser create_event_from_text
+            # uses, so "tomorrow 4pm" behaves identically in both places.
+            parsed = self._parse_event_request(new_time)
+            if parsed is None:
+                return (f"I couldn't understand the time '{new_time}'. Try "
+                        f"something like 'tomorrow at 4 pm'.")
+            _title, start_dt, end_dt, is_all_day = parsed
+            if is_all_day:
+                patch["start"] = {"date": start_dt.date().isoformat()}
+                patch["end"] = {"date": end_dt.date().isoformat()}
+            else:
+                patch["start"] = {"dateTime": start_dt.isoformat()}
+                patch["end"] = {"dateTime": end_dt.isoformat()}
+
+        updated = self._get_service().events().patch(
+            calendarId="primary", eventId=event["id"], body=patch).execute()
+        title = updated.get("summary", "Untitled event")
+        when = self._format_event_time(updated)
+        return f"Updated '{title}' -- now scheduled for {when}."
+
     def _get_service(self, allow_interactive: bool = True):
         if self._service is None:
             self._service = self._oauth.build_service(

@@ -135,6 +135,73 @@ class DriveService:
         ).execute()
         return result.get("files", [])
 
+    def download_to_path(self, name_query: str, destination: str = "") -> str:
+        """Download the best match for `name_query` into a local folder.
+
+        Raises on failure so the tool turns it into an ERROR rather than
+        reporting a download that never happened.
+        """
+        import io
+        import os
+
+        from googleapiclient.http import MediaIoBaseDownload
+
+        query = (name_query or "").strip()
+        if not query:
+            raise ValueError("tell me which file to download")
+
+        escaped = query.replace("'", "\\'")
+        items = self._list_files(
+            f"name contains '{escaped}' and trashed = false and "
+            f"mimeType != 'application/vnd.google-apps.folder'", 10)
+        if not items:
+            raise FileNotFoundError(f"no Drive file matching '{query}'")
+
+        # Prefer an exact name match, else the first hit.
+        chosen = next((i for i in items
+                       if str(i.get("name", "")).lower() == query.lower()), items[0])
+        file_id = chosen["id"]
+        filename = chosen.get("name") or file_id
+        mime = str(chosen.get("mimeType") or "")
+
+        folder = destination.strip() or os.path.join(os.path.expanduser("~"), "Downloads")
+        os.makedirs(folder, exist_ok=True)
+
+        service = self._get_service()
+        # Google-native docs cannot be downloaded raw; they have to be exported.
+        if mime.startswith("application/vnd.google-apps."):
+            export = {
+                "application/vnd.google-apps.document":
+                    ("application/pdf", ".pdf"),
+                "application/vnd.google-apps.spreadsheet":
+                    ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx"),
+                "application/vnd.google-apps.presentation":
+                    ("application/pdf", ".pdf"),
+            }.get(mime)
+            if export is None:
+                raise ValueError(f"'{filename}' is a Google file type that cannot "
+                                 f"be downloaded ({mime}).")
+            export_mime, suffix = export
+            if not filename.lower().endswith(suffix):
+                filename += suffix
+            request = service.files().export_media(fileId=file_id, mimeType=export_mime)
+        else:
+            request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
+
+        target = os.path.join(folder, filename)
+        buffer = io.FileIO(target, "wb")
+        try:
+            downloader = MediaIoBaseDownload(buffer, request)
+            done = False
+            while not done:
+                _status, done = downloader.next_chunk()
+        finally:
+            buffer.close()
+
+        size_kb = os.path.getsize(target) / 1024.0
+        logger.info("[DRIVE] Downloaded %s (%.0f KB)", target, size_kb)
+        return f"Downloaded '{filename}' to {target} ({size_kb:,.0f} KB)."
+
     def _resolve_folder(self, query: str) -> Tuple[Optional[str], str, Optional[str]]:
         clean_query = re.sub(r"\bfolder\b", " ", query, flags=re.I)
         clean_query = re.sub(r"\s+", " ", clean_query).strip()

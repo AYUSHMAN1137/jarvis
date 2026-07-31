@@ -1,0 +1,21 @@
+{
+  "session_id": "6595f099-9423-40b0-ae7a-a845b9e3330e",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Generate an image of a futuristic city at night"
+    },
+    {
+      "role": "assistant",
+      "content": "I have generated an image of a futuristic city at night."
+    },
+    {
+      "role": "user",
+      "content": "Generate an image of IRON MAN IN F1 CAR"
+    },
+    {
+      "role": "assistant",
+      "content": "Here's an image of Iron Man in an F1 car!"
+    }
+  ]
+}

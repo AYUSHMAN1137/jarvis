@@ -1,0 +1,19 @@
+{
+  "schema_version": 2,
+  "session_id": "2f6ab8ca-926f-48d0-8343-e05b573ee9a5",
+  "title": "open example.com in the browser",
+  "title_is_custom": false,
+  "created_at": "2026-08-01T01:44:22+05:30",
+  "updated_at": "2026-08-01T01:44:22+05:30",
+  "message_count": 2,
+  "messages": [
+    {
+      "role": "user",
+      "content": "open example.com in the browser"
+    },
+    {
+      "role": "assistant",
+      "content": "Opening https://example.com in the browser."
+    }
+  ]
+}

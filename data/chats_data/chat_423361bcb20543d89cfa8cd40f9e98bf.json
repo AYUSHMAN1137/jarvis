@@ -1,0 +1,13 @@
+{
+  "session_id": "423361bc-b205-43d8-9cfa-8cd40f9e98bf",
+  "messages": [
+    {
+      "role": "user",
+      "content": "That's all right."
+    },
+    {
+      "role": "assistant",
+      "content": "Understood. Let me know if you need anything else."
+    }
+  ]
+}

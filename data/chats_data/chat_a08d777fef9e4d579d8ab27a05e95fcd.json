@@ -1,0 +1,27 @@
+{
+  "schema_version": 2,
+  "session_id": "a08d777f-ef9e-4d57-9d8a-b27a05e95fcd",
+  "title": "Please search the current weather and give me a 6-sentence startup briefing in English. Line 1: Say exactly this…",
+  "title_is_custom": false,
+  "created_at": "2026-07-30T10:45:52+05:30",
+  "updated_at": "2026-07-30T10:50:51+05:30",
+  "message_count": 4,
+  "messages": [
+    {
+      "role": "user",
+      "content": "Please search the current weather and give me a 6-sentence startup briefing in English.\nLine 1: Say exactly this greeting: Good morning, Ayush.\nLine 2: Today is [Day], [Date].\nLine 3: Short weather summary for morning, afternoon, evening.\nLine 4: One sentence of advice based on weather.\nLine 5: Say exactly this email update: You currently have 201 unread emails waiting.\nLine 6: Say exactly this calendar update: Your calendar status is unavailable right now.\nOutput ONLY the 6 sentences, no introductory or concluding text. English only."
+    },
+    {
+      "role": "assistant",
+      "content": "Good morning, Ayush.  \nToday is Thursday, July 30, 2026.  \nWeather data is not available for this location at the moment.  \nPlan indoor activities in case conditions change.  \nYou currently have 201 unread emails waiting.  \nYour calendar status is unavailable right now."
+    },
+    {
+      "role": "user",
+      "content": "Bataao aaj Kal kya kar rahe hai AAP."
+    },
+    {
+      "role": "assistant",
+      "content": "Main aapki madad kar raha hoon—jo bhi aapko chahiye, bas batayein."
+    }
+  ]
+}

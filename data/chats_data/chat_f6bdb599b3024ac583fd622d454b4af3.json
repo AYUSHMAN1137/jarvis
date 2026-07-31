@@ -1,0 +1,19 @@
+{
+  "schema_version": 2,
+  "session_id": "f6bdb599-b302-4ac5-83fd-622d454b4af3",
+  "title": "open example.com in the browser",
+  "title_is_custom": false,
+  "created_at": "2026-08-01T01:46:11+05:30",
+  "updated_at": "2026-08-01T01:46:11+05:30",
+  "message_count": 2,
+  "messages": [
+    {
+      "role": "user",
+      "content": "open example.com in the browser"
+    },
+    {
+      "role": "assistant",
+      "content": "I attempted"
+    }
+  ]
+}
