@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- J.A.R.V.I.S favicon.  [M14 P12.5]
+       The orb, flattened to two rings and a core. No text: at 16x16 a letter
+       is a smudge. Colours are the chat accent (#7c6aef) and secondary
+       (#4ecdc4) - if tokens.css changes, change these by hand. -->
+  <defs>
+    <radialGradient id="core" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#b9aef7"/>
+      <stop offset="60%" stop-color="#7c6aef"/>
+      <stop offset="100%" stop-color="#4a3bb8"/>
+    </radialGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="#050510"/>
+  <circle cx="16" cy="16" r="10.5" fill="none" stroke="#4ecdc4" stroke-width="1.2" opacity="0.55"/>
+  <circle cx="16" cy="16" r="7.5" fill="none" stroke="#7c6aef" stroke-width="1.6" opacity="0.85"/>
+  <circle cx="16" cy="16" r="4.4" fill="url(#core)"/>
+</svg>

@@ -40,8 +40,9 @@ SAVE_EVERY_N_CHUNKS = 5
 
 # Resolver `kind` -> the legacy route word the frontend already understands.
 # M13 changed the routing vocabulary; the SSE contract did not change with it,
-# because web/script.js keys orb states, route colours and the search starter
-# sound off `decision.query_type`.
+# because the frontend keys orb states, route colours and the search starter
+# sound off `decision.query_type`. That lived in web/script.js until M14 P9
+# split it up; it is now web/js/chat.js and web/js/panels.js.
 _ROUTE_FOR_KIND = {
     KIND_ACTION: "task",
     KIND_MIXED: "mixed",

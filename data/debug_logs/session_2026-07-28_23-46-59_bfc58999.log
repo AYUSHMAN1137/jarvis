@@ -1,0 +1,122 @@
+====================================================================================================
+  J.A.R.V.I.S DEBUG LOG
+  Session : bfc58999-d0fd-4d91-b39c-99d564a80187
+  Started : 2026-07-28 23:46:59
+  File    : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\session_2026-07-28_23-46-59_bfc58999.log
+  Trace   : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\trace.log
+====================================================================================================
+
+[23:46:59.655] ENVIRONMENT
+    python      : 3.12.10  (win32)
+    pywinauto   : 0.6.9
+    comtypes    : 1.4.16
+    pyautogui   : 0.9.54
+    pygetwindow : 0.0.9
+    pyperclip   : 1.11.0
+    uia config  : enabled=True library=pywinauto find_timeout=5.0
+    uia engine  : alive=True apartment=sta generation=1 retired=0
+    tools       : 88 registered
+    foreground  : J.A.R.V.I.S and 8 more pages - Personal - Microsoft​ Edge
+
+====================================================================================================
+  TURN 01  |  23:46:59  |  session bfc58999
+  USER: Hello Jarvis.
+====================================================================================================
+[23:46:59.657] [+ 0.001s] [T01] [TURN] START
+    > turn_id=56f333d0b384 | session_id=bfc58999-d0f | has_image=False
+[23:47:00.363] [+ 0.707s] [T01] [ROUTE] CLASSIFIED
+    > turn_id=56f333d0b384 | category=general | method=llm | elapsed_ms=699
+[23:47:00.369] [+ 0.712s] [T01] [ROUTE] CONVERSATION STREAM
+    > route=general
+[23:47:01.468] [+ 1.811s] [T01] [STREAM] COMPLETED
+    > route=general | chunks=13 | characters=46
+
+[23:47:01.468] [+ 1.811s] [T01] TURN 01 END
+    reply: Good evening, Ayush. How can I help you today?
+    turn duration: + 1.811s
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+  TURN 02  |  23:47:11  |  session bfc58999
+  USER: How are you, Jarvis?
+====================================================================================================
+[23:47:11.634] [+ 0.001s] [T02] [TURN] START
+    > turn_id=bd0d8c76f5c9 | session_id=bfc58999-d0f | has_image=False
+[23:47:13.006] [+ 1.373s] [T02] [ROUTE] CLASSIFIED
+    > turn_id=bd0d8c76f5c9 | category=general | method=llm | elapsed_ms=1365
+[23:47:13.011] [+ 1.379s] [T02] [ROUTE] CONVERSATION STREAM
+    > route=general
+[23:47:14.162] [+ 2.530s] [T02] [STREAM] COMPLETED
+    > route=general | chunks=12 | characters=40
+
+[23:47:14.162] [+ 2.530s] [T02] TURN 02 END
+    reply: I'm fine, thanks. What can I do for you?
+    turn duration: + 2.530s
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+  TURN 03  |  23:47:25  |  session bfc58999
+  USER: Just normal conversation.
+====================================================================================================
+[23:47:25.236] [+ 0.000s] [T03] [TURN] START
+    > turn_id=66e59a834cab | session_id=bfc58999-d0f | has_image=False
+[23:47:26.068] [+ 0.833s] [T03] [ROUTE] CLASSIFIED
+    > turn_id=66e59a834cab | category=general | method=llm | elapsed_ms=828
+[23:47:26.075] [+ 0.838s] [T03] [ROUTE] CONVERSATION STREAM
+    > route=general
+[23:47:27.099] [+ 1.863s] [T03] [STREAM] COMPLETED
+    > route=general | chunks=17 | characters=67
+
+[23:47:27.099] [+ 1.863s] [T03] TURN 03 END
+    reply: Glad to hear it. How's your B.Tech final‑year project coming along?
+    turn duration: + 1.864s
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+  TURN 04  |  23:47:59  |  session bfc58999
+  USER: I'm not pursuing Btech.
+====================================================================================================
+[23:47:59.495] [+ 0.001s] [T04] [TURN] START
+    > turn_id=94e4d8179e9e | session_id=bfc58999-d0f | has_image=False
+[23:48:00.268] [+ 0.775s] [T04] [ROUTE] CLASSIFIED
+    > turn_id=94e4d8179e9e | category=general | method=llm | elapsed_ms=771
+
+====================================================================================================
+  TURN 05  |  23:48:07  |  session bfc58999
+  USER: I am pursuing BCA aids and I am in second year right now.
+====================================================================================================
+[23:48:07.947] [+ 0.000s] [T05] [TURN] START
+    > turn_id=fc2f1f84e436 | session_id=bfc58999-d0f | has_image=False
+[23:48:09.127] [+ 1.180s] [T05] [ROUTE] CLASSIFIED
+    > turn_id=fc2f1f84e436 | category=general | method=llm | elapsed_ms=1172
+[23:48:09.131] [+ 1.185s] [T05] [ROUTE] CONVERSATION STREAM
+    > route=general
+[23:48:10.075] [+ 2.128s] [T05] [STREAM] COMPLETED
+    > route=general | chunks=20 | characters=66
+
+[23:48:10.075] [+ 2.128s] [T05] TURN 05 END
+    reply: Got it, Ayush—second‑year BCA. How's your coursework going so far?
+    turn duration: + 2.128s
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+  TURN 06  |  23:48:39  |  session bfc58999
+  USER: Yeah, the new courses like a machine learning, database management system and I.
+====================================================================================================
+[23:48:39.832] [+ 0.000s] [T06] [TURN] START
+    > turn_id=8ebfe2350d0e | session_id=bfc58999-d0f | has_image=False
+[23:48:40.678] [+ 0.846s] [T06] [ROUTE] CLASSIFIED
+    > turn_id=8ebfe2350d0e | category=general | method=llm | elapsed_ms=842
+[23:48:40.683] [+ 0.851s] [T06] [ROUTE] CONVERSATION STREAM
+    > route=general
+[23:48:41.856] [+ 2.024s] [T06] [STREAM] COMPLETED
+    > route=general | chunks=34 | characters=148
+
+[23:48:41.856] [+ 2.024s] [T06] TURN 06 END
+    reply: Those sound like solid choices—ML for the future, DBMS for the backbone, and AI to tie it all together. Anything in particular you’d like help with?
+    turn duration: + 2.024s
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+  SESSION SUSPENDED (bfc58999-d0fd-4d91-b39c-99d564a80187) -- switching to f3902897-e67a-4a22-b6b7-48a93bfb37f8
+====================================================================================================

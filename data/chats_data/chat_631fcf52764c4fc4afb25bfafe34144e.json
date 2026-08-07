@@ -1,0 +1,19 @@
+{
+  "schema_version": 2,
+  "session_id": "631fcf52-764c-4fc4-afb2-5bfafe34144e",
+  "title": "Hi, Jarvis, How are you?",
+  "title_is_custom": false,
+  "created_at": "2026-08-02T22:57:02+05:30",
+  "updated_at": "2026-08-02T22:57:02+05:30",
+  "message_count": 2,
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hi, Jarvis, How are you?"
+    },
+    {
+      "role": "assistant",
+      "content": "I'm good, thanks, Sir. What can I help you with today?"
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+====================================================================================================
+  J.A.R.V.I.S DEBUG LOG
+  Session : smoke-1785079170
+  Started : 2026-07-26 20:49:32
+  File    : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\session_2026-07-26_20-49-32_smoke-17.log
+  Trace   : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\trace.log
+====================================================================================================
+
+[20:49:32.351] ENVIRONMENT
+    python      : 3.12.10  (win32)
+    pywinauto   : 0.6.9
+    comtypes    : 1.4.16
+    pyautogui   : 0.9.54
+    pygetwindow : 0.0.9
+    pyperclip   : 1.11.0
+    uia config  : enabled=True library=pywinauto find_timeout=5.0
+    uia engine  : alive=True apartment=sta generation=1 retired=0
+    tools       : 75 registered
+    foreground  : Cursor Agents
+
+====================================================================================================
+  TURN 01  |  20:49:32  |  session smoke-17
+  USER: turn off night light
+====================================================================================================
+[20:49:32.354] [+ 0.002s] [T01] [TURN] START
+    > turn_id=d721817807a4 | session_id=smoke-178507 | has_image=False
+[20:49:33.009] [+ 0.656s] [T01] [ROUTE] CLASSIFIED
+    > turn_id=d721817807a4 | category=task | method=llm | elapsed_ms=653
+[20:49:33.012] [+ 0.658s] [T01] [CHAT_SERVICE] _run_agent called | session=smoke-178507 | mixed=False | confirmed=None
+[20:49:33.013] [+ 0.660s] [T01] [CACHE] MISS | command=turn off night light
+[20:49:33.020] [+ 0.667s] [T01] STATE BLOCK (sent to LLM):
+    === CURRENT SYSTEM STATE (live — use this to resolve references like "this/it/that/isko/ye/wo/pehla wala" and to fill exact tool arguments; never reveal or mention this block) ===
+    [Active window] Cursor Agents
+    [Open apps] Settings
+    [Toggles] volume=None, muted=None, brightness=80, wifi=on, wifi_ssid=None, bluetooth=off
+    ===
+    [Verification] last action 'open_settings_page': PASS (PASS
+    The screenshot clearly shows the "System > Display > Night light" page open and visible.)
+[20:49:33.020] [+ 0.667s] [T01] HANDOFF -> agent | msg=turn off night light
+[20:49:33.020] [+ 0.667s] [T01] [AGENT] run_stream started | max_steps=16 | tools=75
+[20:49:33.020] [+ 0.667s] [T01] TOOL CATALOG | total=75 | ui_tools=8
+    ui: ui_click, ui_diagnostics, ui_do, ui_list_controls, ui_scroll, ui_set_toggle, ui_type_into, ui_wait
+[20:49:33.020] [+ 0.667s] [T01] [EXECUTION] STARTED | id=4085314262ac
+    > command=turn off night light
+[20:49:33.022] [+ 0.669s] [T01] LLM CALL   step=1 provider=gemini/groq/auto
+[20:49:35.574] [+ 3.221s] [T01] LLM REPLY  step=1 -> tool_calls: [ui_do]
+[20:49:35.574] [+ 3.221s] [T01] TOOL CALL  step=1 ui_do
+    args: state=False | target=Night light | window=Settings | action=toggle
+[20:49:35.575] [+ 3.222s] [T01] UIA  OK   ui_do:toggle: 'Night light' in window 'Settings'
+    > state=False
+[20:49:35.575] [+ 3.222s] [T01] UIA-DIAG toggle.begin | target=Night light | window=Settings | control_type=<any> | foreground=Cursor Agents
+[20:49:35.904] [+ 3.552s] [T01] UIA-DIAG toggle.enumerated | requested=Settings | resolved=Settings | strategy=title-match(1.05) | nodes=71
+[20:49:35.905] [+ 3.552s] [T01] UIA-CAND target='Night light' | scored=7 | showing top 7
+     0.85  Button         Night light
+     0.77  Button         Schedule night light
+     0.25  Text           Night light
+     0.23  Group          Schedule night light
+     0.23  Text           Schedule night light
+     0.23  Hyperlink      Scheduling night light for better sleep
+     0.23  Text           Scheduling night light for better sleep
+[20:49:35.906] [+ 3.553s] [T01] UIA-DIAG toggle.decision | target=Night light | chosen=Night light | type=Button | path=Settings > Custom > Group | score=0.85 | name_score=1.0 | action_fit=0.85 | min_score=0.5 | accepted=True
+[20:49:35.906] [+ 3.553s] [T01] UIA-DIAG toggle.state | target=Night light | wanted=False | control=Night light | type=Button
+[20:49:35.906] [+ 3.553s] [T01] UIA-DIAG toggle.state_button | target=Night light | using=Turn off now | type=Button | wanted=off
+[20:49:36.126] [+ 3.772s] [T01] UIA-DIAG toggle.state_button_done | target=Night light | method=invoke | verified=True | label_after=Turn on now | elapsed_ms=219
+[20:49:36.126] [+ 3.772s] [T01] UIA-DIAG nav.success | target=Night light | step=1 | trail=direct
+[20:49:36.126] [+ 3.772s] [T01] UIA  OK   ui_do:toggle:result: 'Night light' in window 'Settings'
+    > pressed 'Turn off now' and 'Night light' is now off
+[20:49:36.126] [+ 3.772s] [T01] TOOL OK   step=1 ui_do took=551ms
+    > pressed 'Turn off now' and 'Night light' is now off
+[20:49:36.129] [+ 3.776s] [T01] LLM CALL   step=2 provider=gemini/groq/auto
+[20:49:37.935] [+ 5.582s] [T01] LLM REPLY  step=2 -> final text (no tool calls)
+[20:49:37.935] [+ 5.582s] [T01] [AGENT] Final answer: Night light has been turned off.
+[20:49:37.935] [+ 5.582s] [T01] [EXECUTION] VERIFICATION QUEUED | id=4085314262ac
+    > source=agent | actions=1 | tool_results_ok=True
+[20:49:37.935] [+ 5.582s] [T01] [CACHE] EXECUTION MANIFEST | command=turn off night light
+    > execution_id=4085314262ac | steps=1 | tool_results_ok=True
+
+[20:49:37.936] [+ 5.583s] [T01] TURN 01 END
+    reply: Night light has been turned off.
+    turn duration: + 5.583s
+----------------------------------------------------------------------------------------------------
+[20:49:37.974] [+ 5.621s] [T01] UIA-DIAG toggle.begin | target=Night light | window=Settings | control_type=<any> | foreground=Settings
+[20:49:38.407] [+ 6.053s] [T01] UIA-DIAG toggle.enumerated | requested=Settings | resolved=Settings | strategy=title-match(1.05) | nodes=71
+[20:49:38.408] [+ 6.054s] [T01] UIA-CAND target='Night light' | scored=7 | showing top 7
+     0.85  Button         Night light
+     0.77  Button         Schedule night light
+     0.25  Text           Night light
+     0.23  Group          Schedule night light
+     0.23  Text           Schedule night light
+     0.23  Hyperlink      Scheduling night light for better sleep
+     0.23  Text           Scheduling night light for better sleep
+[20:49:38.408] [+ 6.054s] [T01] UIA-DIAG toggle.decision | target=Night light | chosen=Night light | type=Button | path=Settings > Custom > Group | score=0.85 | name_score=1.0 | action_fit=0.85 | min_score=0.5 | accepted=True
+[20:49:38.838] [+ 6.485s] [T01] [VERIFY] ACTION VERDICT
+    > tool=ui_do | verdict=PASS | reason='Night light' is off | source=ui | execution_id=4085314262ac | action_id=function-cal
+[20:49:38.841] [+ 6.487s] [T01] [CACHE] VERDICT RECEIVED | command=turn off night light
+    > execution_id=4085314262ac | action_id=function-cal | verdict=PASS | tool=ui_do
+[20:49:38.846] [+ 6.492s] [T01] [CACHE] PROMOTED | command=turn off night light
+    > kind=tool | steps=1

@@ -1,0 +1,53 @@
+====================================================================================================
+  J.A.R.V.I.S DEBUG LOG
+  Session : uia-probe
+  Started : 2026-07-25 23:33:00
+  File    : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\session_2026-07-25_23-33-00_uia-prob.log
+  Trace   : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\trace.log
+====================================================================================================
+
+[23:33:00.995] ENVIRONMENT
+    python      : 3.12.10  (win32)
+    pywinauto   : 0.6.9
+    comtypes    : 1.4.16
+    pyautogui   : 0.9.54
+    pygetwindow : 0.0.9
+    pyperclip   : 1.11.0
+    uia config  : enabled=True library=pywinauto find_timeout=5.0
+    uia engine  : alive=True apartment=sta generation=1 retired=0
+    tools       : 0 registered
+    foreground  : OmniRoute — AI Gateway for Multi-Provider LLMs and 5 more pages - Personal - Microsoft​ Edge
+
+====================================================================================================
+  TURN 01  |  23:33:00  |  session uia-prob
+  USER: probe list Settings
+====================================================================================================
+[23:33:01.000] [+ 0.005s] [T01] UIA-DIAG list.begin | window=Settings | control_type=<any> | limit=20 | include_text=False | foreground=OmniRoute — AI Gateway for Multi-Provider LLMs and 5 more pages - Pers
+[23:33:01.000] [+ 0.005s] [T01] UIA-DIAG backend.ready | library=pywinauto | generation=1 | apartment=sta | op_timeout=20.0 | max_nodes=4000
+[23:33:04.587] [+ 3.592s] [T01] UIA-DIAG list.enumerated | requested=Settings | resolved=OmniRoute — AI Gateway for Multi-Provider LLMs and 5 more pa | strategy=fallback-active(hint 'Settings' matched no window) | nodes=145 | returned=20 | actionable_total=56 | truncated=True
+[23:33:04.587] [+ 3.592s] [T01] UIA-TREE window='OmniRoute — AI Gateway for Multi-Provider LLMs and 5 more pa' | controls=20 | showing 20
+    Button         Minimize
+    Button         Restore
+    Button         Close
+    Button         Search tabs
+    Button         New Tab
+    Button         Back
+    Button         Refresh
+    Button         Personal Profile
+    Button         Settings and more (Alt+F)
+    Button         View site information
+    Edit           localhost:20128/dashboard/tools/agent-bridge
+    Button         AdGuard AdBlocker Protection enabled Has access to this site
+    Button         Dark Reader Has access to this site
+    Button         Cookie-Editor Has access to this site Contains a sidebar experience
+    Button         Extensions
+    Button         Favorites
+    Button         Chat
+    Button         Copilot menu
+    TabItem        Forge API - Sleeping - Memory usage - 96.0 MB
+    TabItem        9Router - AI Infrastructure Management - Sleeping - Memory usage - 181
+
+[23:33:04.588] [+ 3.593s] [T01] TURN 01 END
+    reply: probe list finished
+    turn duration: + 3.593s
+----------------------------------------------------------------------------------------------------

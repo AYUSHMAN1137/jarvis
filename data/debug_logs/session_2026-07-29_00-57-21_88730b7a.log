@@ -1,0 +1,36 @@
+====================================================================================================
+  J.A.R.V.I.S DEBUG LOG
+  Session : 88730b7a-f7ee-42bc-845b-4b14a7d92026
+  Started : 2026-07-29 00:57:21
+  File    : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\session_2026-07-29_00-57-21_88730b7a.log
+  Trace   : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\trace.log
+====================================================================================================
+
+[00:57:21.189] ENVIRONMENT
+    python      : 3.12.10  (win32)
+    pywinauto   : 0.6.9
+    comtypes    : 1.4.16
+    pyautogui   : 0.9.54
+    pygetwindow : 0.0.9
+    pyperclip   : 1.11.0
+    uia config  : enabled=True library=pywinauto find_timeout=5.0
+    uia engine  : alive=True apartment=sta generation=1 retired=0
+    tools       : 88 registered
+    foreground  : J.A.R.V.I.S and 8 more pages - Personal - Microsoft​ Edge
+
+====================================================================================================
+  TURN 01  |  00:57:21  |  session 88730b7a
+  USER: (daily startup brief)
+====================================================================================================
+[00:57:21.193] [+ 0.002s] [T01] [STARTUP_BRIEF] START
+    > session_id=88730b7a-f7e
+[00:57:30.635] [+ 9.444s] [T01] [STARTUP_BRIEF] FINISH
+    > chunks=0 | characters=0 | saved_empty=True
+
+[00:57:30.636] [+ 9.445s] [T01] TURN 01 END
+    turn duration: + 9.445s
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+  SESSION SUSPENDED (88730b7a-f7ee-42bc-845b-4b14a7d92026) -- switching to ddbbaab2-9842-4472-a5f4-028b74a7a1de
+====================================================================================================

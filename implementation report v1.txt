@@ -1,0 +1,584 @@
+================================================================================
+J.A.R.V.I.S — IMPLEMENTATION REPORT v1
+================================================================================
+Generated: 2026-07-28
+Sources:  implementation.txt (approved plan), implementation report.txt (Claude
+         Code session transcript), post-implementation codebase verification
+Author of implementation: Claude Code (Opus 5), session dated ~2026-07-27
+Report author: Cursor agent (structured analysis of delivered work)
+
+Purpose
+-------
+This document replaces the raw chat dump in `implementation report.txt` with a
+structured record of what was planned, what was actually built, how it was
+verified, and what remains. It is written against the milestone plan in
+`implementation.txt` (M0–M10) and cross-checked against the working tree.
+
+================================================================================
+1. EXECUTIVE SUMMARY
+================================================================================
+
+Scope delivered:  Milestones M0 through M7 (8 of 10 planned milestones).
+Scope NOT delivered:  M8 (reminders/scheduler), M9 (user-authored SKILL.md
+skills), M10 (optional MCP client).
+
+Headline outcomes:
+  • Tool count grew from 75 → 88 (+13 new tools in M7).
+  • Every tool now declares explicit verification= metadata; 0 unclassified.
+  • Verifiable tools: ~32/75 (43%) before → 78/88 (89%) after (per
+    docs/BASELINE.md, post-M7 baseline).
+  • SQLite lifecycle fixed: shared open_db(), WAL autocheckpoint, shutdown
+    checkpoint — measured 2 MB memory.db-wal before → 0 after clean shutdown.
+  • Passive memory extraction added — addresses facts=0 / um_facts=0.
+  • Maintenance: retention, archival, daily SQLite .backup() under data/backups/.
+  • Phase 4 expanded: query / frontend / memory / google verifiers; metadata-
+    first classify_family().
+  • Honest FAIL surfacing in chat UI (correction bubbles).
+  • Agent speed: oversized tool results offloaded to disk (size-based, not tool
+    list).
+  • Automated tests: 58 → 155 passing (pytest, 2026-07-28 run).
+
+Explicit non-goals (user-approved in plan): network/auth hardening (0.0.0.0,
+CORS, API tokens), run_shell_command, chat-platform channels. Friend's
+Open-Jarvis (agenite-claw) comparison was used only for early brainstorming;
+the approved plan in implementation.txt is rooted in measured JARVIS gaps, not
+in porting that codebase.
+
+================================================================================
+2. PRE-IMPLEMENTATION PROBLEM STATEMENT
+================================================================================
+
+The plan (implementation.txt) documented a “built but not working” gap chain:
+
+  Symptom                          Evidence (pre-work)
+  ─────────────────────────────────────────────────────────────────────────
+  Empty personalization            memory.db: facts=0, corrections=0;
+                                   user_model.db: um_facts=0, um_aliases=0
+  WAL bloat                        memory.db ~4 KB but memory.db-wal ~2 MB
+                                   with server stopped
+  Verification hole                43/75 tools → classify_family() None →
+                                   always UNKNOWN → cache never promotes
+  Sparse tool metadata             Only 4/75 tools had verification= (UIA only,
+                                   shape {"kind":"ui_state"}, not documented)
+  Tiny cache                       command_cache: 6/500 entries; skills: 1
+  Memory never fills               auto_capture() regex-only at chat_service
+  No DB shutdown hygiene           No conn.close() / wal_checkpoint in startup
+  Data dir grows forever           debug_logs, voice_cache, stale .bak, smoke
+                                   JSON never pruned; no backups
+
+Root cause chain (plan): UNKNOWN verdicts → promotion_policy rejects non-PASS
+→ cache stays empty → every command runs full 16-step agent loop → slow; plus
+assistant has no durable user model.
+
+================================================================================
+3. PLAN DECISIONS (LOCKED BEFORE CODING)
+================================================================================
+
+Decision                          Choice
+─────────────────────────────────────────────────────────────────────────────
+Security (bind, CORS, auth)       Dropped — single-user local project
+delete_file / path guard            Kept as accident guard (LLM wrong path)
+OCR for read_screen                 Windows built-in via winsdk (already in deps)
+find_file backend                   Own SQLite index over user profile folders
+Memory extraction timing            After every turn, background thread
+MCP                                 Planned last (M10), optional — NOT implemented
+Cron / reminders                    Planned M8 — NOT implemented
+
+Guardrails (CLAUDE.md §14) enforced throughout:
+  • No hardcoded command/app/phrase lists — metadata via @tool() only
+  • UNKNOWN ≠ PASS; single ExecutionCoordinator path
+  • Fail-soft phases; no second watcher poller
+  • Semantic cache still must not auto-execute (unchanged flag)
+
+================================================================================
+4. MILESTONE-BY-MILESTONE DELIVERY
+================================================================================
+
+--------------------------------------------------------------------------------
+M0 — Measure first  [COMPLETE]
+--------------------------------------------------------------------------------
+
+Deliverables:
+  • scripts/verdict_report.py (~356 lines)
+      - Read-only health report: verifier coverage, verdict distribution per
+        tool, command cache stats, WAL/row counts for all DBs, turn latency
+        percentiles from data/debug_logs/
+      - Flags: --markdown, --write-baseline → docs/BASELINE.md
+  • docs/BASELINE.md — committed baseline table for before/after comparisons
+
+Purpose: Every later milestone judged against measurable numbers, not assumptions.
+
+--------------------------------------------------------------------------------
+M1 — Storage correctness  [COMPLETE]
+--------------------------------------------------------------------------------
+
+Deliverables:
+  • app/services/db.py (new, ~211 lines)
+      - open_db(path, label): connect + PRAGMA journal_mode=WAL (file DBs),
+        wal_autocheckpoint (config DB_WAL_AUTOCHECKPOINT_PAGES, default 1000),
+        busy_timeout (DB_BUSY_TIMEOUT_MS, default 5000)
+      - Module-level registry of all opened connections
+      - checkpoint_and_close_all(): PRAGMA wal_checkpoint(TRUNCATE); close each
+
+Wiring (6 owners — plan said 5; context_engine also opened memory.db):
+  • app/services/memory_service.py
+  • app/services/context/context_engine.py  (alias table on memory.db)
+  • app/services/agent/checker/skill_store.py
+  • app/services/agent/cache/command_cache.py
+  • app/services/agent/proactive/proactive_engine.py
+  • app/services/agent/personalization/user_model.py
+
+  • app/core/startup.py shutdown: checkpoint_and_close_all() after chat save
+
+  • app/services/agent/file_index.py also uses open_db (added in M7)
+
+Tests:
+  • tests/test_db_lifecycle.py — WAL pragmas, checkpoint on shutdown
+
+Verified in session: server run → stop → WAL 0 bytes; memory.db reflects real
+size instead of staying at 4 KB with 2 MB sidecar WAL.
+
+--------------------------------------------------------------------------------
+M2 — Retention + backup  [COMPLETE]
+--------------------------------------------------------------------------------
+
+Deliverables:
+  • app/services/maintenance.py (~310 lines)
+  • config.py section: MAINTENANCE_ENABLED, RETENTION_* , BACKUP_*
+
+Jobs (all fail-soft, run_startup_maintenance() at startup):
+  Job                    Behavior
+  ─────────────────────────────────────────────────────────────────────────
+  prune_debug_logs       Session logs older than RETENTION_DEBUG_LOG_DAYS (7);
+                         skips server.log / trace.log
+  prune_voice_cache      LRU by mtime → caps RETENTION_VOICE_CACHE_FILES (200)
+                         and RETENTION_VOICE_CACHE_MB (20)
+  prune_tool_results     Offloaded agent tool outputs (M6), default 2 days
+  archive_old_actions    actions rows >90d → actions_archive (not deleted)
+  cleanup_stray_files    *.pre-v2.bak, chat_smoke*.json
+  backup_databases       SQLite .backup() API → data/backups/YYYY-MM-DD/,
+                         keep BACKUP_KEEP_DAYS (7)
+
+Note: Plan said M8 scheduler would eventually own daily backup; M8 not built,
+so backup still runs at startup only.
+
+Tests:
+  • tests/test_retention.py
+
+Bugfix (unplanned): tests/test_command_cache_execution.py used a stub config
+module that shadowed real config and silently disabled maintenance-related
+imports; fixed to delegate unknown attrs to real config.
+
+Evidence: data/backups/2026-07-27/ present in working tree with DB snapshots.
+
+--------------------------------------------------------------------------------
+M3 — Memory that actually fills  [COMPLETE]
+--------------------------------------------------------------------------------
+
+Deliverables:
+  • app/services/memory_extractor.py (~352 lines)
+  • config: MEMORY_EXTRACT_ENABLED (True), MEMORY_EXTRACT_MODEL (default
+    INTENT_CLASSIFY_MODEL / gpt-oss-20b), MEMORY_EXTRACT_MAX_FACTS_PER_TURN (3),
+    MEMORY_EXTRACT_MIN_MESSAGE_CHARS, MEMORY_EXTRACT_TIMEOUT
+
+Behavior:
+  • Single daemon worker thread; submit() after stream completes — never blocks
+    chat path
+  • LLM returns strict JSON: {"facts":[{"category","key","value"}]}
+  • Categories constrained to MemoryService _VALID_CATEGORIES
+  • Reuses MemoryService._looks_secret() and remember() upsert by (category,key)
+  • Mirrors user-scoped facts to Phase 8 via get_phase8().set_fact(...,
+    source="auto-llm") so personalization.augment() can inject them
+  • auto_capture() regex path retained as fast path
+
+Wiring:
+  • app/services/chat_service.py — wrapper calls get_memory_extractor().submit(
+    user_message, reply) after turn completes
+
+Tests:
+  • tests/test_memory_extractor.py
+
+Post-baseline: docs/BASELINE.md shows facts=2 (was 0); um_facts still 0 in that
+snapshot (depends on conversation content after deploy).
+
+--------------------------------------------------------------------------------
+M4 — Verification coverage  [COMPLETE]  ★ largest lever
+--------------------------------------------------------------------------------
+
+4a. Metadata-first classification
+  • checker.py: declared_family() reads registry.get(tool).verification["family"]
+  • classify_family() uses declared family first, then legacy name heuristics
+  • Canonical shape on all tools:
+      verification={"family": "<family>", "capability": "...", "target_key": "...",
+                    "cacheable": False}   # for time-varying query tools
+
+4b. family="query" (~27 tools after M7)
+  • PASS when observation does not start with ERROR; source "transport"
+  • cacheable=False on volatile reads (battery_status, get_datetime, etc.)
+  • Misclassified tools fixed: ui_list_controls, list_open_windows,
+    list_wifi_networks, get_clipboard → query
+
+4c. family="file"
+  • create_folder, delete_file, move_*, take_screenshot, generate_image,
+    zip/unzip, screen_region_capture, drive_download, etc.
+
+4d. New verifiers in checker.py
+  • _verify_query — read-only tools
+  • _verify_memory — remember, forget, note_correction (re-query memory.db)
+  • _verify_google — calendar_create/delete/update, drive_upload, gmail_send
+  • _verify_frontend — web tools; joins frontend ACK from activity dispatch
+  • _verify_gmail — Sent-folder check for gmail_send (bugfix during M7)
+
+4e. family="none" — honest UNKNOWN for power/session tools, do_multistep, etc.
+
+4f. Mechanical tagging of all 75 tools at M4 completion; 88 after M7
+
+Supporting artifact:
+  • scripts/_tag_verification.py — one-off helper used during tagging (141 lines)
+
+Cache integration:
+  • cache/coordinator.py _is_uncacheable() respects verification cacheable=False
+
+Tests:
+  • tests/test_verifier_coverage.py — every tool has known family; declared
+    metadata mandatory; dangerous tools not falsely “verifiable”; query tools
+    opt out of caching
+  • tests/test_new_verifiers.py — frontend/memory/google/query behavior
+
+Checkpoint after M0–M6 (from session transcript):
+  Metric                    Before              After (pre-M7)
+  ─────────────────────────────────────────────────────────────────────────
+  Tools with real verifier  32/75 (43%)         65/75 (87%)
+  Unclassified tools        43                  0
+  Tools declaring metadata  4/75                75/75
+  memory.db-wal             ~2 MB               0
+  facts                     0                   auto-fill each turn
+  FAIL visible to user      no                  correction bubble in chat
+  Large tool outputs in ctx full 16 steps       ~95.7% size reduction (example)
+  DB backup                 none                daily .backup(), 7-day keep
+  Tests passing             58                  138 (pre-M7 gate)
+
+Post-M7 baseline (docs/BASELINE.md, 2026-07-27T19:39:03):
+  • 88/88 tools declare verification=
+  • VERIFIABLE: 78/88 (89%); BY DESIGN none: 10; UNCLASSIFIED: 0
+  • Verdict mix on 60 actions: UNKNOWN 38%, none recorded 23%, PASS 20%, FAIL 18%
+  • command_cache still 6 entries (usage-dependent; infrastructure unblocked)
+
+--------------------------------------------------------------------------------
+M5 — Honest failure reporting  [COMPLETE]
+--------------------------------------------------------------------------------
+
+Problem: Phase 4 verifies asynchronously after SSE stream ends — user saw
+“done” while FAIL sat only in side activity feed.
+
+Deliverables:
+  • app/services/agent/checker/coordinator.py
+      - _failure_message() builds plain-English correction from reason/evidence
+      - recent_activity rows include "message" when verdict == FAIL
+  • web/script.js
+      - startBackgroundActivityPolling: correction field for FAIL only
+      - addCorrectionMessage() — distinct assistant bubble (“Jarvis (correction)”)
+      - PASS/UNKNOWN remain side panel only
+
+Tests:
+  • tests/test_failure_reporting.py
+
+Plan item optional TTS for correction: not confirmed implemented (not found in
+grep); UI text correction is in place.
+
+--------------------------------------------------------------------------------
+M6 — Speed  [COMPLETE — partial vs plan wording]
+--------------------------------------------------------------------------------
+
+6a. Tool-result offloading  [DONE]
+  • app/services/agent/tool_result_store.py (~120 lines)
+  • agent_loop.py: maybe_offload() before messages.append(role=tool)
+  • Threshold: AGENT_TOOL_RESULT_MAX_CHARS (default 4000)
+  • Writes: data/tool_results/<execution_id>/<action_id>.txt
+  • read_file exempt (avoid persist→read loops)
+  • Full observation still used for verification and activity preview
+
+6b. Early acknowledgment  [NOT DONE — correctly skipped]
+  Session analysis: query_detected already emitted at chat_service ~327; frontend
+  shows step indicator. No code change.
+
+6c. Response-length rules  [NOT DONE — correctly skipped]
+  Prompts already had LENGTH / ANTI-REPETITION sections. Only added agent hint
+  that large results are saved to files (needed for offload pointers).
+
+6d. WAL fix  [DONE in M1] — reduces memory read cost each turn
+
+Tests:
+  • tests/test_tool_result_offload.py
+
+Evidence: data/tool_results/exec1/act1_ui_list_controls.txt in working tree.
+
+--------------------------------------------------------------------------------
+M7 — New tools  [COMPLETE]
+--------------------------------------------------------------------------------
+
+Tool registry: 75 → 88 tools (+13).
+
+New / expanded capabilities:
+
+  Module              Tool(s)                    Notes
+  ─────────────────────────────────────────────────────────────────────────
+  file_tools.py       find_file                  SQLite index data/file_index.db;
+                                                 user folders only; max 200k files,
+                                                 max 300 per directory (ML dataset
+                                                 bugfix: 199k→37k indexed, 3.8s)
+                      read_document              PDF/DOCX/XLSX text extraction
+                      zip_files / unzip_file     zip-slip guard
+  file_tools.py       _guard_path()              Blocks mutating paths under
+                                                 SystemRoot, Program Files,
+                                                 ProgramData, JARVIS BASE_DIR
+  screen_tools.py     read_screen                winsdk OCR, no new install
+                      read_screen_region         region OCR
+                      screen_region_capture        PNG crop (file verifier family)
+  system_tools.py     app_volume                   Per-app volume via pycaw on
+                                                 existing audio STA worker
+  desktop_tools.py    clipboard_history            Last 20 clips; watcher tick,
+                                                 no new poller
+  google_tools.py     gmail_send                   dangerous=True; gmail.send scope
+                      calendar_update              google verifier
+                      drive_download               file verifier
+  settings_tools.py   bluetooth_connect_device     UI/toggle family as tagged
+
+Infrastructure:
+  • app/services/agent/file_index.py — background build at startup
+    (startup.py get_file_index()), debounced refresh, search via find_file
+  • app/services/agent/tools/screen_tools.py — new module, imported in tools/__init__.py
+
+config.py:
+  • GMAIL_SCOPES extended with gmail.send (invalidates existing OAuth token)
+
+Live verification (implementer session):
+  find_file, read_document, read_screen, app_volume confirmed on user machine.
+
+Bugfixes during M7:
+  1. File index per-directory cap (Downloads ML dataset dominated index)
+  2. _verify_google called wrong API (search_events vs search_events_summary);
+     added _verify_gmail for Sent folder
+
+Tests:
+  • tests/test_path_guard.py
+
+User action required (documented by implementer):
+  Delete data/google_token.json and re-run Google OAuth once (scope change).
+  Until then Gmail/Calendar/Drive tools may fail auth.
+
+Dependencies: read_document uses pypdf / python-docx / openpyxl (optional imports
+in tool — verify requirements.txt if deploying fresh).
+
+--------------------------------------------------------------------------------
+M8 — Reminders / scheduler  [NOT IMPLEMENTED]
+--------------------------------------------------------------------------------
+
+Planned: app/services/scheduler/, data/scheduler.db, set_reminder /
+list_reminders / cancel_reminder, delivery via proactive suggestions, daily
+maintenance handoff, dangerous-tool safety.
+
+Status: No scheduler/ directory, no scheduler_tools.py, no scheduler.db in repo.
+Maintenance backup remains on startup only.
+
+Planned test test_scheduler_safety.py: not present.
+
+--------------------------------------------------------------------------------
+M9 — User-authored SKILL.md skills  [NOT IMPLEMENTED]
+--------------------------------------------------------------------------------
+
+Planned: data/skills_md/<name>/SKILL.md loader, SKILLS_MD_ENABLED, prompt
+injection of name+description only.
+
+Status: No SKILLS_MD config, no loader in startup.
+
+--------------------------------------------------------------------------------
+M10 — MCP client  [NOT IMPLEMENTED]
+--------------------------------------------------------------------------------
+
+Planned optional: app/services/agent/mcp/, wrap MCP tools as ToolSpec,
+verification family none, config-driven servers.
+
+Status: No mcp/ package in tree.
+
+================================================================================
+5. ARCHITECTURE & DATA FLOW CHANGES
+================================================================================
+
+Startup (app/core/startup.py) — additions:
+  • File index background build (fail-soft)
+  • run_startup_maintenance() after DB registration
+  • (unchanged phase order otherwise)
+
+Shutdown — additions:
+  • checkpoint_and_close_all() after chat persistence
+
+Execution pipeline (unchanged authority model):
+  User → Brain → cache → AgentLoop → ExecutionCoordinator → tools
+       → Phase 4 async verify → Phase 6 promote/evict
+  NEW: query-family PASS enables promotion for repeatable mutating tools;
+       memory extractor runs parallel to this after response delivered.
+
+New on-disk artifacts:
+  • data/file_index.db
+  • data/tool_results/
+  • data/backups/YYYY-MM-DD/
+  • docs/BASELINE.md
+
+Database count: still 5 core phase DBs + file_index.db (6 SQLite files for
+app state). Plan did not merge DBs (non-goal).
+
+================================================================================
+6. FILES CREATED / MODIFIED (INVENTORY)
+================================================================================
+
+NEW files (implementation work):
+  app/services/db.py
+  app/services/maintenance.py
+  app/services/memory_extractor.py
+  app/services/agent/tool_result_store.py
+  app/services/agent/file_index.py
+  app/services/agent/tools/screen_tools.py
+  scripts/verdict_report.py
+  scripts/_tag_verification.py
+  docs/BASELINE.md
+  tests/test_db_lifecycle.py
+  tests/test_retention.py
+  tests/test_memory_extractor.py
+  tests/test_verifier_coverage.py
+  tests/test_new_verifiers.py
+  tests/test_failure_reporting.py
+  tests/test_tool_result_offload.py
+  tests/test_path_guard.py
+
+MODIFIED (major — from git status / plan):
+  app/core/startup.py
+  app/services/memory_service.py
+  app/services/context/context_engine.py
+  app/services/chat_service.py
+  app/services/agent/agent_loop.py
+  app/services/agent/checker/checker.py
+  app/services/agent/checker/coordinator.py
+  app/services/agent/checker/skill_store.py
+  app/services/agent/cache/command_cache.py
+  app/services/agent/cache/coordinator.py
+  app/services/agent/proactive/proactive_engine.py
+  app/services/agent/personalization/user_model.py
+  app/services/watcher/state_service.py (clipboard ring buffer)
+  app/services/agent/tools/* (all tool modules — verification= + M7 tools)
+  app/services/google/* (gmail send support, APIs for verifiers)
+  config.py
+  web/script.js (correction bubbles)
+  tests/test_command_cache_execution.py (config stub fix)
+
+NOT updated per plan housekeeping:
+  • CLAUDE.md in repo may still describe pre-M4 verification shape and 75 tools;
+    plan said update §7, §8, §14, §15, §18 as work landed — verify separately.
+
+Deleted / removed from tree (housekeeping): stale smoke chat JSONs, old analysis
+markdown files (per git status).
+
+================================================================================
+7. TESTING & QUALITY GATES
+================================================================================
+
+Plan-required tests:
+
+  Test file                      Milestone   Status
+  ─────────────────────────────────────────────────────────────────────────
+  test_db_lifecycle.py           M1          Present
+  test_retention.py              M2          Present
+  test_memory_extractor.py       M3          Present
+  test_verifier_coverage.py      M4          Present
+  test_query_family.py           M4          NOT separate file; covered inside
+                                             test_verifier_coverage.py
+                                             (test_time_varying_query_tools...)
+  test_failure_reporting.py      M5          Present (plan did not name file;
+                                             equivalent to M5 intent)
+  test_tool_result_offload.py    M6          Present
+  test_path_guard.py             M7          Present
+  test_scheduler_safety.py       M8          Missing (M8 not built)
+
+Full suite (2026-07-28): 155 passed in ~2.3s
+
+Static checks (CLAUDE.md §16): compileall + node --check — run after edits;
+implementer ran these at M0–M6 and M7 gates.
+
+================================================================================
+8. METRICS & HOW TO RE-MEASURE
+================================================================================
+
+  python scripts/verdict_report.py
+  python scripts/verdict_report.py --write-baseline   # refresh docs/BASELINE.md
+  python -m pytest tests/ -v
+  python scripts/cache_inspect.py
+
+Compare WAL: stop server cleanly, confirm no data/*.db-wal or *.db-shm.
+
+End-to-end manual checks (from plan):
+  1. Conversation with preference → facts count rises → new session prompt
+  2. Force verifier FAIL → correction bubble within ~2s
+  3. UIA-heavy command → file under data/tool_results/
+  4. find_file / read_screen / gmail_send (after OAuth refresh)
+
+================================================================================
+9. USER ACTION ITEMS
+================================================================================
+
+  [ ] Re-authenticate Google: remove data/google_token.json, trigger any
+      Google tool, complete browser OAuth (gmail.send scope added).
+
+  [ ] Optional: run verdict_report after normal use — expect cache entries and
+      PASS share to climb as verified actions repeat (not instant).
+
+  [ ] Optional: update CLAUDE.md tool count (88), verification= schema, new
+      services (db, maintenance, memory_extractor, file_index), §18 issues
+      partially addressed (path guard yes; bind/CORS/auth still open if desired).
+
+  [ ] M8/M9/M10: decide whether to schedule next implementation pass.
+
+================================================================================
+10. KNOWN GAPS & RISKS (POST v1)
+================================================================================
+
+  • Scheduler/reminders (M8) — still no “remind me at 6”.
+  • SKILL.md user skills (M9) — only auto-learned skills.db remains.
+  • MCP (M10) — no external tool servers.
+  • command_cache still small in baseline — promotion now possible but needs
+    repeated PASS-verified usage patterns.
+  • UNKNOWN verdict share still ~38% on historical actions — includes legacy
+    rows and genuinely hard UI/input tools; not all UNKNOWN is a bug.
+  • Security items user declined remain: 0.0.0.0 bind, open CORS, no API auth,
+    delete_file outside _guard_path on read/open still unrestricted.
+  • viewer.html /tasks/{task_id} backend route — pre-existing; not in scope.
+  • web/style.css duplication — not in scope.
+
+================================================================================
+11. DESIGN RULES COMPLIANCE (CHECKLIST)
+================================================================================
+
+  [x] Tools are only truth; verification separate from transport_ok
+  [x] UNKNOWN ≠ PASS for cache/skills/habits
+  [x] ExecutionCoordinator single path (including new tools)
+  [x] No hardcoded command lists for matching/offload (size-based offload)
+  [x] No second watcher poller (clipboard + file index use existing/warm-start)
+  [x] Fail-soft maintenance, memory extract, file index, OCR
+  [x] Dangerous tools still require confirmation grants
+  [x] Semantic cache auto-execute still disabled (config unchanged)
+  [x] PROACTIVE_AUTO_ACT still false
+
+================================================================================
+12. SESSION REFERENCE
+================================================================================
+
+Raw implementer log: implementation report.txt (Claude Code transcript, includes
+Open-Jarvis comparison, plan approval, M0–M7 execution, live tool tests).
+
+Approved plan text: implementation.txt
+
+Project map (partially pre-dates this work): CLAUDE.md — treat code as source
+of truth where they diverge.
+
+================================================================================
+END OF IMPLEMENTATION REPORT v1
+================================================================================

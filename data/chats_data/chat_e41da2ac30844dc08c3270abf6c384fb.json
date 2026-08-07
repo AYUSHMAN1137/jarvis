@@ -1,0 +1,43 @@
+{
+  "schema_version": 2,
+  "session_id": "e41da2ac-3084-4dc0-8c32-70abf6c384fb",
+  "title": "hi",
+  "title_is_custom": false,
+  "created_at": "2026-08-06T01:07:41+05:30",
+  "updated_at": "2026-08-06T01:11:42+05:30",
+  "message_count": 8,
+  "messages": [
+    {
+      "role": "user",
+      "content": "hi"
+    },
+    {
+      "role": "assistant",
+      "content": "Hello, Bai Fahim. How can I help you today?"
+    },
+    {
+      "role": "user",
+      "content": "hi im ayush"
+    },
+    {
+      "role": "assistant",
+      "content": "Got it, Ayush. What can I do for you?"
+    },
+    {
+      "role": "user",
+      "content": "kya kar rhe ho"
+    },
+    {
+      "role": "assistant",
+      "content": "Just here, ready to help you with anything you need."
+    },
+    {
+      "role": "user",
+      "content": "Hi, listen, I just got a notification in my college... S.I.H., hackathon that is. I have to participate in it. First, it's at the college level. You have to submit PPTs and if you qualify, you have to go to the next round. Meaning, research thoroughly how this happens, okay? This is our first time. I want to win. I want you to find data from the last 10 years and make a text file, a .md file. For the top three, you can find them everywhere, newspapers, blogs, etc. Reddit, wherever you can research. Watch YouTube videos, watch wherever you need to. Take as much time as you need. Last 10 years' top three. Find them, make an .md file, make it however you need to make it and keep it. Okay? First, do this task. After that, we'll see. The team hasn't selected anything yet."
+    },
+    {
+      "role": "assistant",
+      "content": "I ran into a problem reaching my reasoning engine. Please try again."
+    }
+  ]
+}

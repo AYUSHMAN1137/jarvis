@@ -582,7 +582,7 @@ Testing should happen in three levels.
 
 ```powershell
 python -m compileall -q app config.py run.py watcher_dashboard.py _agent_test_harness.py
-node --check frontend\script.js
+for f in web/js/*.js; do node --experimental-detect-module --check "$f"; done
 node --check frontend\orb.js
 node --check frontend\api-monitor.js
 ```
@@ -770,7 +770,7 @@ When extending the project:
 ### Priority 4 — Maintainability
 
 - Split `app/main.py` into routers
-- Split `web/script.js` into modules
+- ~~Split `web/script.js` into modules~~ - done in M14 P9 (24 ES modules (plus 1 test suite) under `web/js/`, entry `main.js`)
 - Split large services by responsibility
 - Pin dependencies and create a lockfile
 - Add structured logging and error identifiers

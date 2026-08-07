@@ -1,0 +1,120 @@
+====================================================================================================
+  J.A.R.V.I.S DEBUG LOG
+  Session : smoke-1785078589
+  Started : 2026-07-26 20:39:51
+  File    : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\session_2026-07-26_20-39-51_smoke-17.log
+  Trace   : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\trace.log
+====================================================================================================
+
+[20:39:51.152] ENVIRONMENT
+    python      : 3.12.10  (win32)
+    pywinauto   : 0.6.9
+    comtypes    : 1.4.16
+    pyautogui   : 0.9.54
+    pygetwindow : 0.0.9
+    pyperclip   : 1.11.0
+    uia config  : enabled=True library=pywinauto find_timeout=5.0
+    uia engine  : alive=True apartment=sta generation=1 retired=0
+    tools       : 75 registered
+    foreground  : (Movies4u.Foo) - VLC media player
+
+====================================================================================================
+  TURN 01  |  20:39:51  |  session smoke-17
+  USER: open night light settings
+====================================================================================================
+[20:39:51.156] [+ 0.002s] [T01] [TURN] START
+    > turn_id=1f33f76b53cc | session_id=smoke-178507 | has_image=False
+[20:39:52.019] [+ 0.865s] [T01] [ROUTE] CLASSIFIED
+    > turn_id=1f33f76b53cc | category=task | method=llm | elapsed_ms=857
+[20:39:52.020] [+ 0.866s] [T01] [CHAT_SERVICE] _run_agent called | session=smoke-178507 | mixed=False | confirmed=None
+[20:39:52.036] [+ 0.881s] [T01] [CACHE] HIT | command=open night light settings
+    > kind=tool | matched_via=exact
+[20:39:52.054] [+ 0.900s] [T01] [EXECUTION] STARTED | id=457b715b172c
+    > source=cache_tool | actions=1
+[20:39:52.054] [+ 0.900s] [T01] TOOL CALL  step=1 open_settings_page
+    args: page=night light
+[20:39:52.300] [+ 1.145s] [T01] TOOL OK   step=1 open_settings_page took=245ms
+    > Opened the Windows Settings page for 'night light'.
+[20:39:52.307] [+ 1.153s] [T01] [CACHE] EXECUTION MANIFEST | command=open night light settings
+    > execution_id=457b715b172c | steps=1 | tool_results_ok=True
+[20:39:52.308] [+ 1.154s] [T01] [EXECUTION] VERIFICATION QUEUED | id=457b715b172c
+    > source=cache_tool | actions=1 | tool_results_ok=True
+
+[20:39:52.312] [+ 1.158s] [T01] TURN 01 END
+    reply: Done.
+    turn duration: + 1.158s
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+  TURN 02  |  20:39:54  |  session smoke-17
+  USER: turn off night light
+====================================================================================================
+[20:39:54.360] [+ 0.000s] [T02] [TURN] START
+    > turn_id=d17d9f9ac5bf | session_id=smoke-178507 | has_image=False
+[20:39:54.949] [+ 0.589s] [T02] [ROUTE] CLASSIFIED
+    > turn_id=d17d9f9ac5bf | category=task | method=llm | elapsed_ms=585
+[20:39:54.952] [+ 0.592s] [T02] [CHAT_SERVICE] _run_agent called | session=smoke-178507 | mixed=False | confirmed=None
+[20:39:54.964] [+ 0.604s] [T02] [CACHE] MISS | command=turn off night light
+[20:39:54.996] [+ 0.636s] [T02] STATE BLOCK (sent to LLM):
+    === CURRENT SYSTEM STATE (live — use this to resolve references like "this/it/that/isko/ye/wo/pehla wala" and to fill exact tool arguments; never reveal or mention this block) ===
+    [Active window] Settings
+    [Toggles] volume=None, muted=None, brightness=100, wifi=on, wifi_ssid=None, bluetooth=off
+    ===
+[20:39:54.997] [+ 0.636s] [T02] HANDOFF -> agent | msg=turn off night light
+[20:39:54.997] [+ 0.636s] [T02] [AGENT] run_stream started | max_steps=16 | tools=75
+[20:39:54.997] [+ 0.636s] [T02] TOOL CATALOG | total=75 | ui_tools=8
+    ui: ui_click, ui_diagnostics, ui_do, ui_list_controls, ui_scroll, ui_set_toggle, ui_type_into, ui_wait
+[20:39:54.997] [+ 0.636s] [T02] [EXECUTION] STARTED | id=d8781ca4700d
+    > command=turn off night light
+[20:39:54.999] [+ 0.639s] [T02] LLM CALL   step=1 provider=gemini/groq/auto
+[20:39:57.110] [+ 2.752s] [T02] LLM REPLY  step=1 -> tool_calls: [ui_do]
+[20:39:57.112] [+ 2.752s] [T02] TOOL CALL  step=1 ui_do
+    args: target=Night light | window=Settings | state=False | action=toggle
+[20:39:57.113] [+ 2.753s] [T02] UIA  OK   ui_do:toggle: 'Night light' in window 'Settings'
+    > state=False
+[20:39:57.113] [+ 2.753s] [T02] UIA-DIAG toggle.begin | target=Night light | window=Settings | control_type=<any> | foreground=Settings
+[20:39:57.533] [+ 3.173s] [T02] UIA-DIAG toggle.enumerated | requested=Settings | resolved=Settings | strategy=title-match(1.05) | nodes=71
+[20:39:57.534] [+ 3.174s] [T02] UIA-CAND target='Night light' | scored=7 | showing top 7
+     0.85  Button         Night light
+     0.77  Button         Schedule night light
+     0.25  Text           Night light
+     0.23  Group          Schedule night light
+     0.23  Text           Schedule night light
+     0.23  Hyperlink      Scheduling night light for better sleep
+     0.23  Text           Scheduling night light for better sleep
+[20:39:57.534] [+ 3.174s] [T02] UIA-DIAG toggle.decision | target=Night light | chosen=Night light | type=Button | path=Settings > Custom > Group | score=0.85 | name_score=1.0 | action_fit=0.85 | min_score=0.5 | accepted=True
+[20:39:57.535] [+ 3.175s] [T02] UIA-DIAG toggle.state | target=Night light | wanted=False | control=Night light | type=Button
+[20:39:57.535] [+ 3.175s] [T02] UIA-DIAG toggle.state_button | target=Night light | using=Turn off now | type=Button | wanted=off
+[20:40:03.077] [+ 8.717s] [T02] [VERIFY] ACTION VERDICT
+    > tool=open_settings_page | verdict=PASS | reason=PASS The screenshot clearly shows the "System > Display > Night light" page open and visible. | source=vision | execution_id=457b715b172c | action_id=9e31fd71b8f2
+[20:40:03.079] [+ 8.719s] [T02] [CACHE] VERDICT RECEIVED | command=open night light settings
+    > execution_id=457b715b172c | action_id=9e31fd71b8f2 | verdict=PASS | tool=open_settings_page
+[20:40:03.083] [+ 8.723s] [T02] [CACHE] PROMOTED | command=open night light settings
+    > kind=tool | steps=1
+[20:40:17.125] [+22.765s] [T02] UIA-DIAG toggle.TIMEOUT | timeout_s=20.0 | elapsed_ms=20012
+[20:40:17.126] [+22.766s] [T02] UIA-DIAG list.begin | window=Settings | control_type=<any> | limit=80 | include_text=False | foreground=Preview TEST_COMMANDS.md - jarvis - Kiro
+[20:40:17.127] [+22.767s] [T02] UIA-DIAG backend.ready | library=pywinauto | generation=2 | apartment=sta | op_timeout=20.0 | max_nodes=4000
+[20:40:17.547] [+23.187s] [T02] UIA-DIAG toggle.state_button_done | target=Night light | method=invoke | verified=False | label_after= | elapsed_ms=20012
+[20:40:21.857] [+27.496s] [T02] UIA-DIAG window.unresolved | requested=Settings | open_windows=
+[20:40:21.857] [+27.496s] [T02] UIA  FAIL ui_do:toggle:result: 'Night light' in window 'Settings'
+    > there is no open window matching 'Settings'. Open windows: none
+[20:40:21.857] [+27.496s] [T02] TOOL FAIL step=1 ui_do took=24745ms
+    > ERROR: there is no open window matching 'Settings'. Open windows: none
+[20:40:21.861] [+27.501s] [T02] LLM CALL   step=2 provider=gemini/groq/auto
+[20:40:21.862] [+27.501s] [T02] [VERIFY] ACTION VERDICT
+    > tool=ui_do | verdict=FAIL | reason=tool returned an error | source=tool | execution_id=d8781ca4700d | action_id=function-cal
+[20:40:21.864] [+27.503s] [T02] [CACHE] VERDICT RECEIVED | command=turn off night light
+    > execution_id=d8781ca4700d | action_id=function-cal | verdict=FAIL | tool=ui_do
+[20:40:23.392] [+29.032s] [T02] LLM REPLY  step=2 -> final text (no tool calls)
+[20:40:23.392] [+29.032s] [T02] [AGENT] Final answer: The settings window is not open. Should I open it first?
+[20:40:23.392] [+29.032s] [T02] [EXECUTION] VERIFICATION QUEUED | id=d8781ca4700d
+    > source=agent | actions=1 | tool_results_ok=False
+[20:40:23.392] [+29.032s] [T02] [CACHE] EXECUTION MANIFEST | command=turn off night light
+    > execution_id=d8781ca4700d | steps=1 | tool_results_ok=False
+[20:40:23.392] [+29.032s] [T02] [CACHE] NOT PROMOTED | command=turn off night light
+    > reason=execution incomplete or no actions | execution_id=d8781ca4700d
+
+[20:40:23.393] [+29.033s] [T02] TURN 02 END
+    reply: The settings window is not open. Should I open it first?
+    turn duration: +29.033s
+----------------------------------------------------------------------------------------------------

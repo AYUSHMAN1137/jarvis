@@ -1,0 +1,30 @@
+====================================================================================================
+  J.A.R.V.I.S DEBUG LOG
+  Session : d729475c-c400-4482-b289-6aa87f32974f
+  Started : 2026-07-29 01:16:55
+  File    : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\session_2026-07-29_01-16-55_d729475c.log
+  Trace   : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\trace.log
+====================================================================================================
+
+[01:16:55.328] ENVIRONMENT
+    python      : 3.12.10  (win32)
+    pywinauto   : 0.6.9
+    comtypes    : 1.4.16
+    pyautogui   : 0.9.54
+    pygetwindow : 0.0.9
+    pyperclip   : 1.11.0
+    uia config  : enabled=True library=pywinauto find_timeout=5.0
+    uia engine  : alive=True apartment=sta generation=1 retired=0
+    tools       : 88 registered
+    foreground  : J.A.R.V.I.S and 10 more pages - Personal - Microsoft​ Edge
+
+====================================================================================================
+  TURN 01  |  01:16:55  |  session d729475c
+  USER: (daily startup brief)
+====================================================================================================
+[01:16:55.330] [+ 0.001s] [T01] [STARTUP_BRIEF] START
+    > session_id=d729475c-c40
+
+====================================================================================================
+  SESSION SUSPENDED (d729475c-c400-4482-b289-6aa87f32974f) -- switching to e5c3d533-1539-425f-9269-8b3c18501262
+====================================================================================================

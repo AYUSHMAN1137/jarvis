@@ -1,0 +1,37 @@
+====================================================================================================
+  J.A.R.V.I.S DEBUG LOG
+  Session : b7cdb4ec-bb14-46a1-810d-64e5fec5539e
+  Started : 2026-07-25 19:02:51
+  File    : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\session_2026-07-25_19-02-51_b7cdb4ec.log
+  Trace   : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\trace.log
+====================================================================================================
+
+[19:02:51.301] ENVIRONMENT
+    python      : 3.12.10  (win32)
+    pywinauto   : 0.6.9
+    comtypes    : 1.4.16
+    pyautogui   : 0.9.54
+    pygetwindow : 0.0.9
+    pyperclip   : 1.11.0
+    uia config  : enabled=True library=pywinauto find_timeout=5.0
+    uia engine  : available=True
+    tools       : 72 registered
+    foreground  : J.A.R.V.I.S and 1 more page - Personal - Microsoft​ Edge
+
+====================================================================================================
+  TURN 01  |  19:02:51  |  session b7cdb4ec
+  USER: (daily startup brief)
+====================================================================================================
+[19:02:51.316] [+ 0.014s] [T01] [STARTUP_BRIEF] START
+    > session_id=b7cdb4ec-bb1
+[19:02:57.844] [+ 6.543s] [T01] [STARTUP_BRIEF] FINISH
+    > chunks=62 | characters=282 | saved_empty=False
+
+[19:02:57.844] [+ 6.543s] [T01] TURN 01 END
+    reply: Good evening, Ayush. Today is Saturday, July 25, 2026. Weather data for this location is not available at the moment. Since the forecast is unknown, consider keeping flexible plans. Your email status is unavailable right now. Your calendar status is unavailable right now.
+    turn duration: + 6.543s
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+  SESSION SUSPENDED (b7cdb4ec-bb14-46a1-810d-64e5fec5539e) -- switching to 6c21f6da-4651-4f45-a7f0-a6373357f045
+====================================================================================================

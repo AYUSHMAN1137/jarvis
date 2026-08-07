@@ -1,0 +1,37 @@
+====================================================================================================
+  J.A.R.V.I.S DEBUG LOG
+  Session : f3902897-e67a-4a22-b6b7-48a93bfb37f8
+  Started : 2026-07-29 00:17:30
+  File    : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\session_2026-07-29_00-17-30_f3902897.log
+  Trace   : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\trace.log
+====================================================================================================
+
+[00:17:30.421] ENVIRONMENT
+    python      : 3.12.10  (win32)
+    pywinauto   : 0.6.9
+    comtypes    : 1.4.16
+    pyautogui   : 0.9.54
+    pygetwindow : 0.0.9
+    pyperclip   : 1.11.0
+    uia config  : enabled=True library=pywinauto find_timeout=5.0
+    uia engine  : alive=True apartment=sta generation=1 retired=0
+    tools       : 88 registered
+    foreground  : J.A.R.V.I.S and 9 more pages - Personal - Microsoft​ Edge
+
+====================================================================================================
+  TURN 01  |  00:17:30  |  session f3902897
+  USER: What's the latest news today?
+====================================================================================================
+[00:17:30.427] [+ 0.003s] [T01] [TURN] START
+    > turn_id=8876224c9b87 | session_id=f3902897-e67 | has_image=False
+[00:17:31.623] [+ 1.199s] [T01] [ROUTE] CLASSIFIED
+    > turn_id=8876224c9b87 | category=realtime | method=llm | elapsed_ms=1188
+[00:17:31.629] [+ 1.206s] [T01] [ROUTE] CONVERSATION STREAM
+    > route=realtime
+[00:17:36.707] [+ 6.283s] [T01] [STREAM] COMPLETED
+    > route=realtime | chunks=81 | characters=390
+
+[00:17:36.707] [+ 6.283s] [T01] TURN 01 END
+    reply: Today’s headlines include President Trump meeting separately with Ukraine’s Zelenskyy and Israel’s Netanyahu, the United States walking out of a UN session over France’s human‑rights criticism, and a 7.1‑magnitude earthquake striking Japan’s Kyushu region. Other notable stories are a teen killed by lightning while shielding his brother and FIFA proposing a $20 billion commercial spinoff.
+    turn duration: + 6.283s
+----------------------------------------------------------------------------------------------------

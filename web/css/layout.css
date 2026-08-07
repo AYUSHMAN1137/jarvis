@@ -1,0 +1,1068 @@
+/* ====================================================================
+   J.A.R.V.I.S - layout.css   [M14 P8.4]
+   ------------------------------------------------------------------
+   The shell: app grid, header, chat area, input bar, orb container,
+   welcome screen, scroll FAB.
+
+   Split out of web/style.css as a pure move: no rule was reformatted,
+   renamed or reordered relative to another rule for the same selector.
+   ================================================================== */
+
+.app {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+}
+
+#orb-container {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    translate: -50% -50%;
+    width: min(600px, 80vw);
+    height: min(600px, 80vw);
+    z-index: var(--z-orb);
+    pointer-events: none;
+    opacity: 0.35;
+    /* [M14 P2.4] `filter` removed from the transition list. Cross-fading a
+       drop-shadow on a 600px fixed element re-rasterises the whole layer on
+       every frame of the transition. The glow colour now snaps; the ambient
+       ::before still cross-fades over 1s and carries the colour change. */
+    transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+/* ── Ambient Light — orb bleeds color into the scene ── */
+#orb-container::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    translate: -50% -50%;
+    /* [M14 P2.4] 200% -> 150% of a 600px box (1200px -> 900px). The gradient is
+       fully transparent past 70%, so the outer band was painting nothing. */
+    width: 150%;
+    height: 150%;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--ambient-color, rgba(124, 106, 239, 0.08)) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: -1;
+    transition: background 1s ease;
+}
+
+/* ── Per-state orb styles ── */
+#orb-container.active,
+#orb-container.speaking {
+    opacity: 1;
+    animation: orbPulse 1.6s ease-in-out infinite;
+}
+
+/* Idle: dim, gentle pulse */
+#orb-container.orb-idle {
+    opacity: var(--orb-idle-opacity, 0.35);
+    animation: none;
+    filter: drop-shadow(0 0 8px rgba(124, 106, 239, 0.1));
+    --ambient-color: rgba(124, 106, 239, 0.06);
+}
+
+/* Listening: full brightness, faster pulse, cyan glow */
+#orb-container.orb-listening {
+    opacity: 1;
+    animation: orbPulse 1.0s ease-in-out infinite;
+    filter: drop-shadow(0 0 45px rgba(76, 194, 233, 0.42));
+    --ambient-color: rgba(76, 194, 233, 0.12);
+}
+
+/* Thinking: full brightness, fast pulse, purple glow */
+#orb-container.orb-thinking {
+    opacity: 1;
+    animation: orbPulse 0.8s ease-in-out infinite;
+    filter: drop-shadow(0 0 38px rgba(140, 90, 255, 0.42));
+    --ambient-color: rgba(140, 90, 255, 0.12);
+}
+
+/* Searching: full brightness, moderate pulse, teal glow */
+#orb-container.orb-searching {
+    opacity: 1;
+    animation: orbPulse 1.2s ease-in-out infinite;
+    filter: drop-shadow(0 0 45px rgba(0, 200, 180, 0.42));
+    --ambient-color: rgba(0, 200, 180, 0.10);
+}
+
+/* Working: bright, energetic pulse, warm amber glow */
+#orb-container.orb-working {
+    opacity: 1;
+    animation: orbPulse 1.0s ease-in-out infinite;
+    filter: drop-shadow(0 0 52px rgba(240, 160, 60, 0.42));
+    --ambient-color: rgba(240, 160, 60, 0.10);
+}
+
+/* Speaking: calm breathing glow, original purple */
+#orb-container.orb-speaking {
+    opacity: 1;
+    animation: orbPulse 1.6s ease-in-out infinite;
+    filter: drop-shadow(0 0 30px rgba(124, 106, 239, 0.34));
+    --ambient-color: rgba(124, 106, 239, 0.10);
+}
+
+.header {
+    position: relative;
+    z-index: var(--z-chrome);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    height: var(--header-h);
+    padding: 0 24px;
+    margin-bottom: var(--content-gap);
+    border-radius: 0 0 var(--radius) var(--radius);
+    border-top: none;
+    flex-shrink: 0;
+    /* [M14 P2.5] 48px -> 20px. This was the largest radius in the file, on a
+       full-width bar that sits above the scrolling chat, so the blur
+       re-resolved on every scroll frame. Against a near-black background the
+       difference between 48px and 20px is not perceptible. */
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+}
+
+.header::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 5%;
+    right: 5%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-glow), rgba(78, 205, 196, 0.2), transparent);
+    border-radius: 1px;
+}
+
+.logo {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 3px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.tagline {
+    font-size: 0.68rem;
+    font-weight: 300;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+}
+
+.mode-switch {
+    position: relative;
+    display: flex;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 12px;
+    padding: 3px;
+    gap: 2px;
+}
+
+.mode-slider {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: calc(50% - 4px);
+    height: calc(100% - 6px);
+    background: var(--accent);
+    border-radius: 10px;
+    transition: transform var(--transition);
+    opacity: 0.18;
+}
+
+.mode-slider.right {
+    transform: translateX(calc(100% + 2px));
+}
+
+.mode-switch-single {
+    min-width: 0;
+}
+
+.mode-switch-single .mode-btn {
+    flex: 1;
+    min-width: 0;
+    justify-content: center;
+    padding: 7px 16px;
+}
+
+.mode-switch-single .mode-slider {
+    width: calc(100% - 6px);
+}
+
+.mode-switch-three {
+    min-width: 0;
+}
+
+.mode-switch-three .mode-btn {
+    flex: 1;
+    min-width: 0;
+    justify-content: center;
+    padding: 7px 10px;
+}
+
+.mode-switch-three .mode-slider {
+    width: calc(33.333% - 4px);
+}
+
+.mode-switch-three .mode-slider.center {
+    transform: translateX(calc(100% + 2px));
+}
+
+.mode-switch-three .mode-slider.right {
+    transform: translateX(calc(200% + 4px));
+}
+
+.mode-btn {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 16px;
+    font-size: 0.76rem;
+    font-weight: 500;
+    border-radius: 10px;
+    color: var(--text-dim);
+    transition: color var(--transition);
+    white-space: nowrap;
+}
+
+.mode-btn.active { color: var(--text); }
+
+.mode-btn svg {
+    opacity: 0.7;
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    min-height: 16px;
+    flex-shrink: 0;
+}
+
+.mode-btn.active svg { opacity: 1; }
+
+.header-left { display: flex; align-items: baseline; gap: 10px; flex-shrink: 0; min-width: 0; }
+
+.header-center { flex: 1; min-width: 0; display: flex; justify-content: center; align-items: center; }
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+}
+
+.status-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.68rem;
+    font-weight: 500;
+    color: var(--text-dim);
+    padding: 5px 12px 5px 8px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    transition: background 0.4s ease,
+                border-color 0.4s ease,
+                color 0.4s ease,
+                transform 0.4s ease,
+                box-shadow 0.4s ease,
+                opacity 0.4s ease;
+}
+
+.status-badge .status-text {
+    transition: color 0.3s ease;
+    min-width: 52px;
+    text-align: center;
+}
+
+.status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 6px var(--success);
+    animation: pulse-dot 2s ease-in-out infinite;
+    transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.status-dot.offline {
+    background: var(--danger);
+    box-shadow: 0 0 6px var(--danger);
+    animation: none;
+}
+
+.status-dot.state-listening {
+    background: #4cc2e9;
+    box-shadow: 0 0 6px #4cc2e9;
+}
+
+.status-badge:has(.state-listening) {
+    background: rgba(76, 194, 233, 0.08);
+    border-color: rgba(76, 194, 233, 0.15);
+    color: #4cc2e9;
+}
+
+.status-dot.state-thinking {
+    background: #8c5aff;
+    box-shadow: 0 0 6px #8c5aff;
+}
+
+.status-badge:has(.state-thinking) {
+    background: rgba(140, 90, 255, 0.08);
+    border-color: rgba(140, 90, 255, 0.15);
+    color: #8c5aff;
+}
+
+.status-dot.state-searching {
+    background: #00c8b4;
+    box-shadow: 0 0 6px #00c8b4;
+}
+
+.status-badge:has(.state-searching) {
+    background: rgba(0, 200, 180, 0.08);
+    border-color: rgba(0, 200, 180, 0.15);
+    color: #00c8b4;
+}
+
+.status-dot.state-working {
+    background: #f0a03c;
+    box-shadow: 0 0 6px #f0a03c;
+}
+
+.status-badge:has(.state-working) {
+    background: rgba(240, 160, 60, 0.08);
+    border-color: rgba(240, 160, 60, 0.15);
+    color: #f0a03c;
+}
+
+.status-dot.state-speaking {
+    background: #7c6aef;
+    box-shadow: 0 0 6px #7c6aef;
+}
+
+.status-badge:has(.state-speaking) {
+    background: rgba(124, 106, 239, 0.08);
+    border-color: rgba(124, 106, 239, 0.15);
+    color: #7c6aef;
+}
+
+.btn-icon {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--glass-border);
+    transition: background var(--transition), border-color var(--transition);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.btn-icon:hover {
+    background: var(--glass-hover);
+    border-color: rgba(255, 255, 255, 0.14);
+}
+
+.chat-area {
+    position: relative;
+    z-index: var(--z-content);
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* Scroll-to-bottom FAB */
+.scroll-fab {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%) translateY(60px);
+    z-index: var(--z-fab);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(10, 10, 28, 0.85);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-dim);
+    cursor: pointer;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: background 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.scroll-fab.visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
+}
+
+.scroll-fab:hover {
+    background: rgba(124, 106, 239, 0.2);
+    border-color: rgba(124, 106, 239, 0.3);
+    color: var(--accent);
+    box-shadow: 0 4px 20px rgba(124, 106, 239, 0.15);
+}
+
+.welcome-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    flex: 1;
+    gap: 16px;
+    padding: 48px 24px;
+    animation: fadeIn 0.6s ease;
+}
+
+/* Staggered entrance for welcome elements */
+.welcome-screen .welcome-icon {
+    animation: fadeInUp 0.6s ease both;
+    animation-delay: 0.1s;
+}
+
+.welcome-screen .welcome-title {
+    animation: fadeInUp 0.6s ease both, gradientShift 6s ease infinite;
+    animation-delay: 0.25s, 0s;
+}
+
+.welcome-screen .welcome-sub {
+    animation: fadeInUp 0.5s ease both;
+    animation-delay: 0.4s;
+}
+
+.welcome-screen .welcome-chips {
+    animation: fadeInUp 0.5s ease both;
+    animation-delay: 0.55s;
+}
+
+.welcome-screen .chip:nth-child(1) { animation: fadeInUp 0.4s ease both; animation-delay: 0.6s; }
+
+.welcome-screen .chip:nth-child(2) { animation: fadeInUp 0.4s ease both; animation-delay: 0.7s; }
+
+.welcome-screen .chip:nth-child(3) { animation: fadeInUp 0.4s ease both; animation-delay: 0.8s; }
+
+.welcome-screen .chip:nth-child(4) { animation: fadeInUp 0.4s ease both; animation-delay: 0.9s; }
+
+.welcome-screen .chip:nth-child(5) { animation: fadeInUp 0.4s ease both; animation-delay: 1.0s; }
+
+.welcome-screen .chip:nth-child(6) { animation: fadeInUp 0.4s ease both; animation-delay: 1.1s; }
+
+.welcome-icon {
+    color: var(--accent);
+    opacity: 0.5;
+    margin-bottom: 6px;
+}
+
+.welcome-title {
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--text) 20%, var(--accent) 50%, var(--accent-secondary) 80%);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    /* [M14 P2.7] gradientShift used to be declared here AND on
+       `.welcome-screen .welcome-title`, where it is combined with the fadeInUp
+       entrance. The combined declaration wins anyway, so this one is dropped to
+       leave exactly one source of truth. Welcome-screen only; the whole screen
+       is removed after the first message. */
+}
+
+.welcome-sub {
+    font-size: 0.95rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    letter-spacing: 0.3px;
+}
+
+.welcome-chips {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 28px;
+    max-width: 560px;
+    width: 100%;
+}
+
+.chip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    font-size: 0.76rem;
+    font-weight: 400;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: var(--text-dim);
+    transition: background 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    text-align: left;
+    backdrop-filter: blur(12px);
+}
+
+.chip::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 20%;
+    bottom: 20%;
+    width: 2px;
+    background: linear-gradient(180deg, var(--accent), var(--accent-secondary));
+    border-radius: 2px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.chip:hover {
+    background: rgba(124, 106, 239, 0.08);
+    border-color: rgba(124, 106, 239, 0.2);
+    color: var(--text);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(124, 106, 239, 0.15);
+}
+
+.chip:hover::before {
+    opacity: 1;
+}
+
+.chip svg {
+    flex-shrink: 0;
+    opacity: 0.5;
+    transition: opacity 0.3s ease;
+}
+
+.chip:hover svg {
+    opacity: 1;
+    color: var(--accent);
+}
+
+.input-bar {
+    position: relative;
+    z-index: var(--z-chrome);
+    padding: 14px 24px 14px;
+    padding-bottom: max(14px, env(safe-area-inset-bottom, 14px));
+    margin-top: var(--content-gap);
+    border-radius: var(--radius) var(--radius) 0 0;
+    border-bottom: none;
+    flex-shrink: 0;
+    box-shadow: none;
+    display: flex;
+    justify-content: center;
+}
+
+.input-wrapper {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--glass-border);
+    border-radius: 18px;
+    padding: 8px 8px 8px 18px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    box-shadow: none;
+    max-width: 720px;
+    width: 100%;
+    position: relative;
+}
+
+.input-wrapper:focus-within {
+    border-color: rgba(124, 106, 239, 0.3);
+    box-shadow: 0 0 20px rgba(124, 106, 239, 0.08), 0 0 40px rgba(124, 106, 239, 0.04);
+}
+
+.input-wrapper textarea {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    resize: none;
+    font-size: 0.87rem;
+    line-height: 1.5;
+    padding: 8px 0;
+    max-height: 120px;
+    color: var(--text);
+}
+
+.input-wrapper textarea::placeholder { color: var(--text-muted); }
+
+.input-wrapper textarea:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.input-actions {
+    display: flex;
+    gap: 6px;
+    padding-bottom: 2px;
+    flex-shrink: 0;
+}
+
+.action-btn {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    transition: background var(--transition),
+                border-color var(--transition),
+                color var(--transition),
+                transform var(--transition),
+                box-shadow var(--transition),
+                opacity var(--transition);
+    color: var(--text-dim);
+    flex-shrink: 0;
+}
+
+.action-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.16);
+    color: var(--text);
+    transform: translateY(-1px);
+}
+
+.action-btn:active {
+    transform: translateY(0);
+}
+
+.send-btn {
+    /* [M14 P8.2] No !important here. .send-btn beats .action-btn on source
+       order alone -- both are single-class selectors, so specificity ties and
+       the later rule wins. The five !important that used to be in this block
+       were cargo-culted, and they are what made .stop-btn (P3.5) unstylable. */
+    background: linear-gradient(135deg, var(--accent), #6a58e0);
+    border-color: var(--accent);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(124, 106, 239, 0.25);
+    transition: background 0.3s ease,
+                border-color 0.3s ease,
+                color 0.3s ease,
+                transform 0.3s ease,
+                box-shadow 0.3s ease,
+                opacity 0.3s ease;
+}
+
+.send-btn:hover {
+    background: linear-gradient(135deg, #6a58e0, #5a48d0);
+    border-color: #6a58e0;
+    box-shadow: 0 4px 20px rgba(124, 106, 239, 0.4);
+    transform: translateY(-1px);
+}
+
+.send-btn.has-text {
+    animation: sendGlow 2s ease-in-out infinite;
+}
+
+.send-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+    box-shadow: none;
+    transform: none;
+    animation: sendBtnPulse 1.2s ease-in-out infinite;
+}
+
+/* ---------------------------------------------------------------------------
+   M14 P3: Stop control + stream failure surfaces.
+   Placed after .send-btn so the two share the same slot geometry and the later
+   rule wins on equal specificity by source order alone.
+   --------------------------------------------------------------------------- */
+.stop-btn {
+    background: rgba(255, 107, 107, 0.12);
+    border-color: rgba(255, 107, 107, 0.45);
+    color: var(--danger, #ff6b6b);
+    box-shadow: 0 2px 8px rgba(255, 107, 107, 0.18);
+    transition: background 0.2s ease,
+                border-color 0.2s ease,
+                color 0.2s ease,
+                box-shadow 0.2s ease,
+                transform 0.2s ease;
+}
+
+.stop-btn:hover {
+    background: rgba(255, 107, 107, 0.2);
+    border-color: rgba(255, 107, 107, 0.7);
+    box-shadow: 0 4px 16px rgba(255, 107, 107, 0.28);
+    transform: translateY(-1px);
+}
+
+.mic-btn .mic-icon-active { display: none; }
+
+.mic-btn.listening .mic-icon { display: none; }
+
+.mic-btn.listening .mic-icon-active { display: block; }
+
+.mic-btn.listening {
+    background: rgba(255, 107, 107, 0.18);
+    border-color: rgba(255, 107, 107, 0.3);
+    color: var(--danger);
+    animation: micPulse 1.5s ease-in-out infinite;
+}
+
+.tts-btn .tts-icon-on { display: none; }
+
+.tts-btn.tts-active .tts-icon-off { display: none; }
+
+.tts-btn.tts-active .tts-icon-on { display: block; }
+
+.tts-btn.tts-active {
+    background: rgba(124, 106, 239, 0.18);
+    border-color: rgba(124, 106, 239, 0.3);
+    color: var(--accent);
+}
+
+.tts-btn.tts-speaking {
+    animation: ttsPulse 1.5s ease-in-out infinite;
+}
+
+.input-meta {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 6px 12px 0;
+    min-height: 0;
+    font-size: 0.66rem;
+    color: var(--text-muted);
+}
+
+.orb-dash-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--glass-border);
+    flex-shrink: 0;
+}
+
+.orb-dash-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.02em;
+}
+
+.orb-dash-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.orb-dash-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.orb-dash-section-title {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+}
+
+/* ── Tabs ── */
+.orb-dash-tabs {
+    display: flex;
+    gap: 2px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: var(--radius-sm);
+    padding: 3px;
+    flex-shrink: 0;
+}
+
+.orb-dash-tab {
+    flex: 1;
+    padding: 7px 4px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--text-dim);
+    border-radius: var(--radius-xs);
+    transition: background var(--transition),
+                border-color var(--transition),
+                color var(--transition),
+                transform var(--transition),
+                box-shadow var(--transition),
+                opacity var(--transition);
+    text-align: center;
+    letter-spacing: 0.02em;
+}
+
+.orb-dash-tab:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.orb-dash-tab.active {
+    color: #fff;
+    background: var(--accent);
+    box-shadow: 0 2px 8px rgba(124, 106, 239, 0.3);
+}
+
+/* State-specific tab active colors */
+.orb-dash-tab.active[data-state="listening"] { background: rgba(76, 194, 233, 0.8); box-shadow: 0 2px 8px rgba(76, 194, 233, 0.3); }
+
+.orb-dash-tab.active[data-state="thinking"]  { background: rgba(140, 90, 255, 0.8);  box-shadow: 0 2px 8px rgba(140, 90, 255, 0.3);  }
+
+.orb-dash-tab.active[data-state="searching"] { background: rgba(0, 200, 180, 0.8);   box-shadow: 0 2px 8px rgba(0, 200, 180, 0.3);   }
+
+.orb-dash-tab.active[data-state="working"]   { background: rgba(240, 160, 60, 0.8);  box-shadow: 0 2px 8px rgba(240, 160, 60, 0.3);  }
+
+.orb-dash-tab.active[data-state="speaking"]  { background: rgba(124, 106, 239, 0.8); box-shadow: 0 2px 8px rgba(124, 106, 239, 0.3); }
+
+/* ── Slider rows ── */
+.orb-dash-row {
+    display: grid;
+    grid-template-columns: 90px 1fr 42px;
+    align-items: center;
+    gap: 10px;
+}
+
+.orb-dash-row label {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+
+.orb-dash-val {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Custom range slider ── */
+.orb-dash-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+    outline: none;
+    transition: background var(--transition);
+}
+
+.orb-dash-slider:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.orb-dash-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 0 8px rgba(124, 106, 239, 0.4);
+    transition: box-shadow var(--transition), transform var(--transition);
+}
+
+.orb-dash-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 0 14px rgba(124, 106, 239, 0.6);
+}
+
+.orb-dash-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 0 8px rgba(124, 106, 239, 0.4);
+}
+
+/* ── Color picker ── */
+.orb-dash-color {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 28px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-xs);
+    background: transparent;
+    cursor: pointer;
+    padding: 0;
+}
+
+.orb-dash-color::-webkit-color-swatch-wrapper {
+    padding: 2px;
+}
+
+.orb-dash-color::-webkit-color-swatch {
+    border: none;
+    border-radius: 4px;
+}
+
+.orb-dash-color::-moz-color-swatch {
+    border: none;
+    border-radius: 4px;
+}
+
+/* ── Footer ── */
+.orb-dash-footer {
+    padding: 14px 18px;
+    border-top: 1px solid var(--glass-border);
+    flex-shrink: 0;
+}
+
+.orb-dash-reset {
+    width: 100%;
+    padding: 10px 16px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--danger);
+    background: rgba(255, 107, 107, 0.08);
+    border: 1px solid rgba(255, 107, 107, 0.15);
+    border-radius: var(--radius-sm);
+    transition: background var(--transition),
+                border-color var(--transition),
+                color var(--transition),
+                transform var(--transition),
+                box-shadow var(--transition),
+                opacity var(--transition);
+    letter-spacing: 0.02em;
+}
+
+.orb-dash-reset:hover {
+    background: rgba(255, 107, 107, 0.15);
+    border-color: rgba(255, 107, 107, 0.3);
+}
+
+/* ============================================================
+   UI POLISH (append-only, non-breaking — class names unchanged)
+   ============================================================ */
+
+/* Chip styles consolidated into main .chip block above */
+
+/* Welcome icon: subtle float */
+.welcome-icon {
+    animation: welcomeFloat 4s ease-in-out infinite;
+}
+
+/* [M14 P2.7] `logoSheen 6s linear infinite` deleted. It animated
+   background-position on a background-clip:text element that is always visible
+   in the header, forcing a text repaint forever, and the sheen is invisible in
+   normal use. background-size is kept so the gradient still reads the same. */
+.logo {
+    background-size: 200% auto;
+}
+
+/* Send button: clearer focus + idle attention */
+.send-btn:focus-visible,
+.action-btn:focus-visible,
+.btn-icon:focus-visible,
+.chip:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* Input wrapper: gentle accent ring when focused */
+.input-wrapper:focus-within {
+    border-color: rgba(124, 106, 239, 0.40);
+    box-shadow: 0 0 0 3px rgba(124, 106, 239, 0.10);
+}
+
+/* Status badge: subtle pill background */
+.status-badge {
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--glass-border);
+}
+
+/* ---------------------------------------------------------------------------
+   Header overflow menu (js/headermenu.js).  [M14 P10.1]
+
+   position:absolute inside a position:relative wrapper, deliberately not
+   position:fixed: .header has a backdrop-filter, and a filtered element is the
+   containing block for its fixed descendants, so a fixed menu would be
+   positioned against the header rather than the viewport.
+
+   The menu also cannot be clipped by the header, so the header must not gain
+   overflow:hidden. If it ever does, this menu disappears and the cause will
+   not be obvious.
+   --------------------------------------------------------------------------- */
+.header-more { position: relative; display: inline-flex; }
+
+.header-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: var(--z-panel);
+    min-width: 208px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: var(--radius-md, 12px);
+    background: rgba(16, 18, 30, 0.97);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+}
+
+.header-menu[hidden] { display: none; }
+
+/* Menu rows are full width and left aligned: a menu is a list to read, not a
+   toolbar to scan. .btn-icon centres its content, so that is undone here. */
+.header-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    justify-content: flex-start;
+    padding: 9px 10px;
+    border-radius: var(--radius-xs, 6px);
+    white-space: nowrap;
+}
+
+.header-menu-label { font-size: 0.88rem; }
+
+/* Below this width the header was already fighting for room, which is the
+   whole reason the menu exists; the label text stays, the tagline goes. */
+@media (max-width: 480px) {
+    .header-menu { min-width: 180px; }
+}

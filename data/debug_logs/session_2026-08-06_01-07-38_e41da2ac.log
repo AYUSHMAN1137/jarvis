@@ -1,0 +1,103 @@
+====================================================================================================
+  J.A.R.V.I.S DEBUG LOG
+  Session : e41da2ac-3084-4dc0-8c32-70abf6c384fb
+  Started : 2026-08-06 01:07:38
+  File    : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\session_2026-08-06_01-07-38_e41da2ac.log
+  Trace   : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\trace.log
+====================================================================================================
+
+[01:07:38.069] ENVIRONMENT
+    python      : 3.12.10  (win32)
+    pywinauto   : 0.6.9
+    comtypes    : 1.4.16
+    pyautogui   : 0.9.54
+    pygetwindow : 0.0.9
+    pyperclip   : 1.11.0
+    uia config  : enabled=True library=pywinauto find_timeout=5.0
+    uia engine  : alive=True apartment=sta generation=1 retired=0
+    tools       : 95 registered
+    foreground  : J.A.R.V.I.S - Personal - Microsoft​ Edge
+
+====================================================================================================
+  TURN 01  |  01:07:38  |  session e41da2ac
+  USER: hi
+====================================================================================================
+[01:07:38.072] [+ 0.002s] [T01] [TURN] START
+    > turn_id=f1f0d256a789 | session_id=e41da2ac-308 | has_image=False
+[01:07:41.256] [+ 3.186s] [T01] UNDERSTOOD -> knowledge_question | "The user greets the assistant."
+    self_contained=True refers_to_previous=False is_confirmation=None source=llm 3140ms
+[01:07:41.271] [+ 3.201s] [T01] [ROUTE] CONVERSATION STREAM
+    > route=general
+[01:07:41.839] [+ 3.769s] [T01] [STREAM] COMPLETED
+    > route=general | chunks=13 | characters=43
+
+[01:07:41.839] [+ 3.769s] [T01] TURN 01 END
+    reply: Hello, Bai Fahim. How can I help you today?
+    turn duration: + 3.769s
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+  TURN 02  |  01:07:54  |  session e41da2ac
+  USER: hi im ayush
+====================================================================================================
+[01:07:54.989] [+ 0.000s] [T02] [TURN] START
+    > turn_id=0d7ad3f99a38 | session_id=e41da2ac-308 | has_image=False
+[01:07:57.763] [+ 2.773s] [T02] UNDERSTOOD -> knowledge_question | "User says hi and introduces themselves as Ayush."
+    self_contained=True refers_to_previous=False is_confirmation=None source=llm 2769ms
+[01:07:57.772] [+ 2.782s] [T02] [ROUTE] CONVERSATION STREAM
+    > route=general
+[01:07:58.376] [+ 3.386s] [T02] [STREAM] COMPLETED
+    > route=general | chunks=13 | characters=37
+
+[01:07:58.379] [+ 3.390s] [T02] TURN 02 END
+    reply: Got it, Ayush. What can I do for you?
+    turn duration: + 3.390s
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+  TURN 03  |  01:08:47  |  session e41da2ac
+  USER: kya kar rhe ho
+====================================================================================================
+[01:08:47.392] [+ 0.000s] [T03] [TURN] START
+    > turn_id=fea755d2301e | session_id=e41da2ac-308 | has_image=False
+[01:08:49.867] [+ 2.474s] [T03] UNDERSTOOD -> knowledge_question | "What is the assistant currently doing?"
+    self_contained=False refers_to_previous=True is_confirmation=None source=llm 2476ms
+[01:08:49.877] [+ 2.485s] [T03] [ROUTE] CONVERSATION STREAM
+    > route=general
+[01:08:50.553] [+ 3.161s] [T03] [STREAM] COMPLETED
+    > route=general | chunks=12 | characters=52
+
+[01:08:50.553] [+ 3.161s] [T03] TURN 03 END
+    reply: Just here, ready to help you with anything you need.
+    turn duration: + 3.161s
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+  TURN 04  |  01:11:32  |  session e41da2ac
+  USER: Hi, listen, I just got a notification in my college... S.I.H., hackathon that is. I have to participate in it. First, it's at the college level. You have to submit PPTs and if you qualify, you have to go to the next round. Meaning, research thoroughly how this happens, okay? This is our first time. I want to win. I want you to find data from the last 10 years and make a text file, a .md file. For the top three, you can find them everywhere, newspapers, blogs, etc. Reddit, wherever you can research. Watch YouTube videos, watch wherever you need to. Take as much time as you need. Last 10 years' top three. Find them, make an .md file, make it however you need to make it and keep it. Okay? First, do this task. After that, we'll see. The team hasn't selected anything yet.
+====================================================================================================
+[01:11:32.937] [+ 0.000s] [T04] [TURN] START
+    > turn_id=b568a05c2214 | session_id=e41da2ac-308 | has_image=False
+[01:11:36.221] [+ 3.284s] [T04] UNDERSTOOD -> action | "Research the top three winners of the S.I.H. hackathon over the last 10 years from reliable sources and compile the information into a Markdown (.md) file."
+    self_contained=True refers_to_previous=False is_confirmation=None source=llm 3274ms
+[01:11:36.230] [+ 3.294s] [T04] [CHAT_SERVICE] _run_agent called | session=e41da2ac-308 | mixed=False | confirmed=None
+[01:11:36.327] [+ 3.393s] [T04] [CACHE] LOOKUP SKIPPED | command=Research the top three winners of the S.I.H. hackathon over the last 10 years from reliable sources and compile the information into a Markdown (.md) file.
+    > reason=context-dependent command
+[01:11:36.332] [+ 3.395s] [T04] STATE BLOCK (sent to LLM):
+    === CURRENT SYSTEM STATE (live — use this to resolve references like "this/it/that/isko/ye/wo/pehla wala" and to fill exact tool arguments; never reveal or mention this block) ===
+    [Active window] J.A.R.V.I.S - Personal - Microsoft​ Edge
+    [Toggles] volume=None, muted=None, brightness=80, wifi=on, wifi_ssid=None, bluetooth=on
+    ===
+[01:11:36.335] [+ 3.398s] [T04] HANDOFF -> agent | msg=Research the top three winners of the S.I.H. hackathon over the last 10 years from reliable sources and compile the information into a Markdown (.md) file.
+[01:11:36.335] [+ 3.398s] [T04] [AGENT] run_stream started | max_steps=16 | tools=95
+[01:11:36.335] [+ 3.398s] [T04] TOOL CATALOG | total=95 | ui_tools=8
+    ui: ui_click, ui_diagnostics, ui_do, ui_list_controls, ui_scroll, ui_set_toggle, ui_type_into, ui_wait
+[01:11:36.335] [+ 3.398s] [T04] [EXECUTION] STARTED | id=1dd6b3bf820e
+    > command=Research the top three winners of the S.I.H. hackathon over the last 10 years from reliable sources and compile the information into a Markdown (.md) file.
+[01:11:36.335] [+ 3.398s] [T04] LLM CALL   step=1 provider=gemini/groq/auto
+[01:11:42.110] [+ 9.173s] [T04] ERROR [AGENT]: LLM call failed at step 1: All agent LLM providers failed (Gemini, Groq).
+
+[01:11:42.110] [+ 9.173s] [T04] TURN 04 END
+    reply: I ran into a problem reaching my reasoning engine. Please try again.
+    turn duration: + 9.173s
+----------------------------------------------------------------------------------------------------

@@ -1,0 +1,33 @@
+====================================================================================================
+  J.A.R.V.I.S DEBUG LOG
+  Session : uia-probe
+  Started : 2026-07-25 23:38:10
+  File    : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\session_2026-07-25_23-38-10_uia-prob.log
+  Trace   : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\trace.log
+====================================================================================================
+
+[23:38:10.770] ENVIRONMENT
+    python      : 3.12.10  (win32)
+    pywinauto   : 0.6.9
+    comtypes    : 1.4.16
+    pyautogui   : 0.9.54
+    pygetwindow : 0.0.9
+    pyperclip   : 1.11.0
+    uia config  : enabled=True library=pywinauto find_timeout=5.0
+    uia engine  : alive=True apartment=unknown generation=1 retired=0
+    tools       : 0 registered
+    foreground  : YouTube and 6 more pages - Personal - Microsoft​ Edge
+
+====================================================================================================
+  TURN 01  |  23:38:10  |  session uia-prob
+  USER: probe find Windows Update Windows Update
+====================================================================================================
+[23:38:10.784] [+ 0.011s] [T01] UIA-DIAG backend.ready | library=pywinauto | generation=1 | apartment=sta | op_timeout=20.0 | max_nodes=4000
+[23:38:10.784] [+ 0.011s] [T01] UIA-DIAG click.begin | target=Windows Update | window=Windows Update | control_type=<any> | foreground=YouTube and 6 more pages - Personal - Microsoft​ Edge
+[23:38:14.641] [+ 3.869s] [T01] UIA-DIAG backend.hint_not_a_window | hint=Windows Update | active=YouTube and 6 more pages - Personal - Microsoft​ E | nodes=69
+[23:38:14.764] [+ 3.991s] [T01] UIA-DIAG window.unresolved | requested=Windows Update | open_windows=Taskbar | YouTube and 6 more pages - Personal - Microsoft​ Edge | Settings | agent-bridge-config-1785002587170.json - Notepad | WhatsApp | jarvis - Antigravity ...
+
+[23:38:14.767] [+ 3.995s] [T01] TURN 01 END
+    reply: probe find finished
+    turn duration: + 3.995s
+----------------------------------------------------------------------------------------------------

@@ -1,0 +1,74 @@
+/* ====================================================================
+   J.A.R.V.I.S - tokens.css   [M14 P8.4]
+   ------------------------------------------------------------------
+   Design tokens. Every colour, radius, timing, font and stacking layer.
+   ORDER IS THE API: this file must load FIRST -- every other file reads
+   these custom properties.
+
+   Split out of web/style.css as a pure move: no rule was reformatted,
+   renamed or reordered relative to another rule for the same selector.
+   ================================================================== */
+
+:root {
+    /* [M14 P2.8] Tell the UA this app is dark. Removes the white flash before
+       CSS applies and makes native UI (scrollbars, the search-input clear
+       affordance, the orb dashboard's <input type=color>) render dark. */
+    color-scheme: dark;
+    --bg: #050510;
+    --glass-bg: rgba(10, 10, 28, 0.72);
+    --glass-border: rgba(255, 255, 255, 0.06);
+    --glass-hover: rgba(255, 255, 255, 0.10);
+    --accent: #7c6aef;
+    --accent-glow: rgba(124, 106, 239, 0.35);
+    --accent-secondary: #4ecdc4;
+    --text: rgba(255, 255, 255, 0.93);
+    --text-dim: rgba(255, 255, 255, 0.50);
+    --text-muted: rgba(255, 255, 255, 0.28);
+    --danger: #ff6b6b;
+    --success: #51cf66;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --radius-xs: 6px;
+    --header-h: 64px;
+    --input-bar-h: calc(88px + env(safe-area-inset-bottom, 0px));
+    --content-gap: 16px;
+    --panel-gap: 14px;
+    --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    --font: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: ui-monospace, 'Cascadia Code', 'Consolas', 'SFMono-Regular', monospace;
+
+    /* Stacking scale.  [M14 P8.1]
+       Every z-index in the app comes from here. Adding a raw number is a bug:
+       it is how a modal dialog ended up at 40 while a reminder toast sat at
+       9999, so a reminder firing during "Delete conversation?" painted over the
+       confirmation for a permanent, unrecoverable delete.
+
+       Gaps of 100 leave room to insert a layer without renumbering.
+
+       Toasts sit BELOW modals on purpose. A reminder is informational and
+       reappears in the reminders panel; a modal is a blocking question, and one
+       of them destroys data. If you are about to raise --z-toast above
+       --z-modal, that is the bug being fixed here.
+
+       Four raw values survive deliberately, all local stacking inside one
+       component: .mode-btn (1), .history-item-menu (3), .history-item.menu-open
+       (5), and the two decorative -1 layers on body::after and
+       #orb-container::before. They never interact with these layers. */
+    --z-orb:              0;   /* ambient background, never interactive       */
+    --z-content:        100;   /* chat area                                    */
+    --z-chrome:         200;   /* header, input bar -- above content           */
+    --z-fab:            300;   /* scroll-to-bottom, floats over content        */
+    --z-panel-overlay:  390;   /* sits just UNDER panels, over content         */
+    --z-panel:          400;   /* activity, search, settings, orb dash, history*/
+    --z-float:          500;   /* draggable: cam panel, reminders, notes       */
+    --z-toast:          600;   /* transient -- above panels, below modals      */
+    --z-modal-back:     700;   /* dialog backdrop                              */
+    --z-modal:          710;   /* the dialog itself                            */
+    --z-dev:          99999;   /* dev perf overlay only (P0.4)                 */
+
+    /* [M14 P8.6] Set at runtime by orb.js applyGlobals() from
+       localStorage['orbGlobals']. Declared here only so the default is
+       discoverable -- the fallback in the orb rules carried it before, and
+       nothing told you where the number came from. */
+    --orb-idle-opacity: 0.35;
+}

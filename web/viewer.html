@@ -4,19 +4,46 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>J.A.R.V.I.S — Viewer</title>
+    <meta name="description" content="Standalone viewer for images and text produced by J.A.R.V.I.S.">
+    <meta name="theme-color" content="#050510">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
     <style>
+        /* ---------------------------------------------------------------
+         * Chat design tokens.  [M14 P11.2]
+         *
+         * THIS IS A COPY of the values in web/css/tokens.css. Keep the two in
+         * sync by hand -- and yes, that is deliberate. This page is opened
+         * standalone, sometimes from a bookmark, sometimes with the app not
+         * running at all, so it must not depend on a stylesheet it might not
+         * be able to fetch. A copy with a pointer beats a shared file that
+         * turns a standalone page blank.
+         *
+         * It already used --accent: #7c6aef, the chat accent, so matching the
+         * chat was always the intent; --bg, the text ramp and the font just
+         * never followed. Three visual dialects across five surfaces was an
+         * accident. Two -- ambient chat, dense admin -- is a decision.
+         *
+         * --surface, --border and --accent-hover are local names this page
+         * uses throughout; they now resolve to the chat equivalents rather
+         * than to a third palette.
+         * --------------------------------------------------------------- */
         :root {
-            --bg: #0a0a1a;
-            --surface: #12122a;
-            --border: rgba(255,255,255,0.06);
-            --text: #e8e6f0;
-            --text-dim: #8b89a0;
+            color-scheme: dark;
+            --bg: #050510;
+            --surface: rgba(10, 10, 28, 0.72);   /* = --glass-bg   */
+            --border: rgba(255, 255, 255, 0.06); /* = --glass-border */
+            --text: rgba(255, 255, 255, 0.93);
+            --text-dim: rgba(255, 255, 255, 0.50);
             --accent: #7c6aef;
             --accent-hover: #6b5ce7;
+            --accent-secondary: #4ecdc4;
             --success: #4ecdc4;
             --danger: #ff6b6b;
-            --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            --font: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
             --radius: 16px;
+            --radius-xs: 6px;
+            --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         ::-webkit-scrollbar { display: none; }
@@ -287,11 +314,108 @@
             .content-editor { padding: 16px; font-size: 0.82rem; min-height: 40vh; line-height: 1.7; }
             .image-frame { border-radius: 10px; }
         }
+        /* -----------------------------------------------------------------
+         * Motion and contrast.  [M14 P11.5]
+         * P2 covered the chat app only. The spinner here loops forever, which
+         * is exactly the kind of thing reduced-motion exists for.
+         * ----------------------------------------------------------------- */
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.001ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.001ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
+
+        @media (prefers-contrast: more) {
+            :root {
+                --text-dim: rgba(255, 255, 255, 0.78);
+                --border: rgba(255, 255, 255, 0.28);
+                --surface: #12122a;
+            }
+
+            .topbar {
+                backdrop-filter: none;
+            }
+        }
+
+        /* -----------------------------------------------------------------
+         * Cross-surface navigation.  [M14 P11.6]
+         * Inline rather than shared, for the same reason the tokens are.
+         * ----------------------------------------------------------------- */
+        .surface-nav {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex-wrap: wrap;
+            font-size: 0.76rem;
+        }
+
+        .surface-nav a {
+            padding: 5px 10px;
+            border-radius: var(--radius-xs);
+            border: 1px solid transparent;
+            color: var(--text-dim);
+            text-decoration: none;
+            white-space: nowrap;
+            transition: var(--transition);
+        }
+
+        .surface-nav a:hover {
+            color: var(--text);
+            border-color: var(--border);
+        }
+
+        .surface-nav a:focus-visible,
+        .btn:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        /* -----------------------------------------------------------------
+         * Empty state.  [M14 P11.3]
+         * What this page shows when it was opened with nothing to show. It
+         * used to show a spinner and then claim the task timed out.
+         * ----------------------------------------------------------------- */
+        .viewer-empty {
+            max-width: 520px;
+            padding: 48px 20px;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 0.88rem;
+            line-height: 1.65;
+        }
+
+        .viewer-empty h2 {
+            margin-bottom: 10px;
+            color: var(--text);
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .viewer-empty code {
+            padding: 2px 6px;
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.06);
+            font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+            font-size: 0.82em;
+            color: var(--accent-secondary);
+        }
+
     </style>
 </head>
 <body>
     <div class="topbar">
         <span class="topbar-title">J.A.R.V.I.S</span>
+        <nav class="surface-nav" aria-label="J.A.R.V.I.S surfaces">
+            <a href="/jarvis/">Chat</a>
+            <a href="/dashboard">Control Center</a>
+            <a href="/watcher">Watcher</a>
+            <a href="/jarvis/api-monitor.html">API Monitor</a>
+        </nav>
         <div class="topbar-actions" id="topbar-actions"></div>
     </div>
 
@@ -305,56 +429,113 @@
     <div class="toast" id="toast"></div>
     <script>
     (function() {
-        const API = window.location.origin;
+        /* -------------------------------------------------------------------
+         * How this page gets its content.  [M14 P11.3]
+         *
+         * It used to poll GET /tasks/{task_id} once a second, up to 120 times.
+         * That route does not exist and has not for a long time -- the
+         * background-task system it belonged to was removed in the agent
+         * rebuild, and results now arrive inline in the chat through
+         * _actions -> handleActions(). So every visit produced two minutes of
+         * 404s behind a spinner, then "Task timed out. Please try again",
+         * which was not true and could not be fixed by trying again.
+         *
+         * A dead route is not replaced with a new one here on purpose: the
+         * backend genuinely has nothing to serve. Instead the page takes its
+         * content from the two places a standalone viewer can honestly get it.
+         *
+         *   1. Query parameters -- shareable, bookmarkable, no backend:
+         *        viewer.html?image=<https url>&prompt=<optional caption>
+         *        viewer.html?text=<url-encoded text>&prompt=<optional>
+         *   2. postMessage from the window that opened it, same origin only:
+         *        win.postMessage({ type: 'jarvis:viewer',
+         *                          result: { type: 'image', url, prompt } }, origin)
+         *
+         * With neither, it says so plainly instead of pretending to load.
+         * ----------------------------------------------------------------- */
         const params = new URLSearchParams(window.location.search);
-        const taskId = params.get('task_id');
         const mainEl = document.getElementById('viewer-main');
         const loadingEl = document.getElementById('loading-state');
         const actionsEl = document.getElementById('topbar-actions');
         const toastEl = document.getElementById('toast');
-        const promptEl = document.getElementById('loading-prompt');
-        if (!taskId) {
-            showError('No task ID provided. Please open this page from JARVIS.');
-            return;
-        }
-        let pollInterval = null;
-        let pollCount = 0;
-        const MAX_POLLS = 120;
-        function poll() {
-            pollCount++;
-            if (pollCount > MAX_POLLS) {
-                clearInterval(pollInterval);
-                showError('Task timed out. Please try again.');
-                return;
+
+        // Nothing polls any more, so the spinner has no job at boot. It stays
+        // in the markup for postMessage senders that want to show it while
+        // they prepare a result.
+        loadingEl.style.display = 'none';
+
+        let emptyEl = null;
+
+        function resultFromParams(p) {
+            const image = p.get('image');
+            // Same guard the chat uses on remote images: an attacker-supplied
+            // javascript: or data: URL must never reach an src attribute.
+            if (image && /^https?:\/\//i.test(image)) {
+                return { type: 'image', url: image, prompt: p.get('prompt') || '' };
             }
-            fetch(`${API}/tasks/${encodeURIComponent(taskId)}`)
-                .then(r => {
-                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                    return r.json();
-                })
-                .then(data => {
-                    if (data.status === 'completed') {
-                        clearInterval(pollInterval);
-                        renderResult(data);
-                    } else if (data.status === 'failed') {
-                        clearInterval(pollInterval);
-                        showError(data.error || 'Task failed. Please try again.');
-                    } else {
-                        if (data.prompt && promptEl) {
-                            promptEl.textContent = `"${data.prompt}"`;
-                        }
-                        if (data.label) {
-                            const loadingText = loadingEl.querySelector('.loading-text');
-                            if (loadingText) loadingText.textContent = data.label + '...';
-                        }
-                    }
-                })
-                .catch(err => {
-                    console.warn('Poll error:', err);
-                });
+            const text = p.get('text') !== null ? p.get('text') : p.get('content');
+            if (text !== null) {
+                return { type: 'content', text: text, prompt: p.get('prompt') || '' };
+            }
+            return null;
         }
-        pollInterval = setInterval(poll, 1000);
-        poll();
+
+        function clearEmptyState() {
+            if (emptyEl && emptyEl.parentNode) emptyEl.parentNode.removeChild(emptyEl);
+            emptyEl = null;
+        }
+
+        function showEmptyState() {
+            clearEmptyState();
+            emptyEl = document.createElement('div');
+            emptyEl.className = 'viewer-empty';
+            const h = document.createElement('h2');
+            h.textContent = 'Nothing to show yet';
+            const p1 = document.createElement('p');
+            p1.textContent = 'This viewer displays an image or a block of text that '
+                + 'J.A.R.V.I.S produced. Open it with something to show:';
+            const p2 = document.createElement('p');
+            p2.style.marginTop = '12px';
+            const c1 = document.createElement('code');
+            c1.textContent = 'viewer.html?image=<url>';
+            const c2 = document.createElement('code');
+            c2.textContent = 'viewer.html?text=<text>';
+            p2.appendChild(c1);
+            p2.appendChild(document.createTextNode('  or  '));
+            p2.appendChild(c2);
+            const p3 = document.createElement('p');
+            p3.style.marginTop = '12px';
+            p3.textContent = 'Generated images and content also appear directly in the '
+                + 'chat, which is usually where you want them.';
+            emptyEl.appendChild(h);
+            emptyEl.appendChild(p1);
+            emptyEl.appendChild(p2);
+            emptyEl.appendChild(p3);
+            mainEl.appendChild(emptyEl);
+            actionsEl.textContent = '';
+            const back = document.createElement('a');
+            back.className = 'btn';
+            back.href = '/jarvis/';
+            back.textContent = 'Open chat';
+            actionsEl.appendChild(back);
+        }
+
+        window.addEventListener('message', function (event) {
+            // Same-origin only. A viewer that renders whatever any page sends it
+            // is an XSS hole with a nice spinner.
+            if (event.origin !== window.location.origin) return;
+            const data = event.data;
+            if (!data || data.type !== 'jarvis:viewer' || !data.result) return;
+            clearEmptyState();
+            renderResult({ result: data.result });
+        });
+
+        const initial = resultFromParams(params);
+        if (initial) {
+            renderResult({ result: initial });
+        } else {
+            showEmptyState();
+        }
         function renderResult(data) {
             const result = data.result;
             if (!result) {
@@ -382,6 +563,7 @@
             const frame = document.createElement('div');
             frame.className = 'image-frame';
             const img = document.createElement('img');
+            img.referrerPolicy = 'no-referrer';
             img.src = result.url;
             img.alt = result.prompt || 'Generated image';
             img.onerror = () => showError('Failed to load image. The URL may have expired.');

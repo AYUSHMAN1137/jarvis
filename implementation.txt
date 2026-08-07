@@ -1,0 +1,346 @@
+# J.A.R.V.I.S — Implementation Plan
+
+## Context
+
+JARVIS ka architecture solid hai — 8 phases, 75 tools, verification layer, 4-layer cache. Lekin live data padhne par pata chala ki **kai systems bane hue hain par chal nahi rahe**:
+
+| Evidence | Source |
+|---|---|
+| `facts: 0`, `corrections: 0`, `um_facts: 0`, `um_aliases: 0` | live query on `data/memory.db`, `data/user_model.db` |
+| `memory.db` = 4 KB but `memory.db-wal` = **2 MB**, `-shm` present with server stopped | `ls data/` |
+| **43 of 75 tools** return UNKNOWN always | ran `classify_family()` (`checker/checker.py:73`) over all 75 registered tool names |
+| Only **4 tools** declare `verification=` (all `uia_tools.py`, shape `{"kind":"ui_state"}` — not the shape CLAUDE.md §7 documents) | grep over `tools/` |
+| `command_cache`: **6** entries of 500; `skills`: **1** | live DB query |
+| `auto_capture()` is regex-only — catches only "my name is X" / "remember that X" / "i like X" | `memory_service.py:423-489`, called at `chat_service.py:297` |
+| No `conn.close()` / `wal_checkpoint` anywhere in shutdown | `startup.py:216-259` |
+| `debug_logs` 696 KB, `voice_cache` 2.7 MB / 159 files — never pruned; stale `.pre-v2.bak`, smoke-test JSON | `du -sh data/*` |
+
+**Root cause chain:** 43 tools have no verifier → verdicts are UNKNOWN → promotion policy rejects non-PASS (`promotion_policy.py:74`) → cache stays empty → every command runs the full 16-step agent loop → slow. Separately, memory never fills, so the assistant has no idea who the user is.
+
+**Outcome:** JARVIS should remember the user, verify what it actually did, admit failures, respond faster, keep its data clean, and gain the tools it's obviously missing.
+
+---
+
+## Decisions taken (user said "jaisa bhi tumhe theek lage")
+
+| Decision | Choice | Why |
+|---|---|---|
+| Security hardening (`0.0.0.0`, CORS, auth) | **Dropped** | User: single-user personal project, explicitly declined |
+| `delete_file` path guard | **Kept — as accident guard, not security** | If the LLM hallucinates a path, nothing currently stops a wrong delete. Reliability bug. |
+| OCR engine | **Windows built-in (`winsdk`)** | `winsdk` already in `requirements.txt` (used for radios). Zero new install, offline. |
+| `find_file` backend | **Own SQLite index over user folders** | No dependency on Windows indexing being enabled; we control scope |
+| Memory extraction timing | **After every turn, background** | Zero perceived latency; facts available same session |
+| MCP | **Included, but LAST and optional** | Real capability, but least core to a Windows voice assistant and highest maintenance surface |
+| Cron / reminders | **Included** | A personal assistant with no "remind me at 6" is genuinely incomplete |
+
+**Guardrails that must hold throughout** (CLAUDE.md §14): no hardcoded command/app/phrase lists (integrate via `@tool()` metadata only); UNKNOWN never becomes PASS; `ExecutionCoordinator` remains the single execution authority; every phase stays fail-soft; no second watcher poller.
+
+---
+
+## Milestones
+
+Ordered so each one de-risks the next. M0–M5 fix what's broken; M6–M10 add.
+
+---
+
+### M0 — Measure first *(~2h, read-only)*
+
+Nothing else should be tuned blind.
+
+**Create `scripts/verdict_report.py`** (matches existing `scripts/cache_inspect.py` style):
+- Verdict distribution from `memory.db.actions.verification_verdict`, grouped by tool
+- Which tools have *never* produced a PASS
+- Cache entries by `kind`, hit/failure counts
+- WAL sizes, row counts across all 5 DBs
+- Turn latency percentiles parsed from `data/debug_logs/`
+
+**Output:** a baseline table committed to `docs/BASELINE.md` so M4/M6 improvements are measurable rather than assumed.
+
+---
+
+### M1 — Storage correctness *(~half day)*
+
+**New file `app/services/db.py`** — one small shared SQLite helper, since all 5 DBs currently open connections independently:
+
+```python
+open_db(path)                 # connect + PRAGMA journal_mode=WAL
+                              #         + wal_autocheckpoint=1000
+                              #         + busy_timeout=5000
+                              # registers conn in a module-level registry
+checkpoint_and_close_all()    # PRAGMA wal_checkpoint(TRUNCATE); close() each
+```
+
+**Wire into the 5 existing DB owners** (replace their raw `sqlite3.connect`):
+- `app/services/memory_service.py:91`
+- `app/services/agent/checker/skill_store.py`
+- `app/services/agent/cache/command_cache.py`
+- `app/services/agent/proactive/` (proactive.db owner)
+- `app/services/agent/personalization/` (user_model.db owner)
+
+**`app/core/startup.py`** — in the shutdown block after Phase 4 stops (`:253`) and after `save_chat_session` (`:257`), call `checkpoint_and_close_all()`.
+
+**Verify:** start server → stop cleanly → `ls data/*.db-wal` returns nothing. `memory.db` grows from 4 KB to its real size.
+
+---
+
+### M2 — Retention + backup *(~4h)*
+
+**New file `app/services/maintenance.py`** — all fail-soft, all config-gated:
+
+| Job | Rule |
+|---|---|
+| `prune_debug_logs()` | delete session logs older than `RETENTION_DEBUG_LOG_DAYS` (7) |
+| `prune_voice_cache()` | LRU by mtime down to `RETENTION_VOICE_CACHE_FILES` (200) / `RETENTION_VOICE_CACHE_MB` (20) |
+| `archive_old_actions()` | move `actions` rows older than 90d into an `actions_archive` table (never delete) |
+| `cleanup_stray_files()` | remove `*.pre-v2.bak`, `chat_smoke*.json` |
+| `daily_backup()` | SQLite `.backup()` API (**not** file copy — unsafe with WAL) → `data/backups/YYYY-MM-DD/`, keep 7 days |
+
+**Call site:** startup, right after `checkpoint_and_close_all()` registration (M1). Once M8 lands, the scheduler owns the daily run instead.
+
+**`config.py`** — new `# === Maintenance / retention ===` section following the existing `_env_bool` pattern.
+
+---
+
+### M3 — Memory that actually fills *(~1 day)*
+
+Fixes `facts: 0`. Keep `auto_capture()` (it's free, no LLM) as the fast path; add an LLM pass behind it.
+
+**New file `app/services/memory_extractor.py`:**
+- Runs **after** the response is fully streamed — hooked at the end of the `chat_service` jarvis-stream method, next to the existing `self.save_chat_session(session_id)` / `dbg.session_end(...)` calls
+- Fire-and-forget on a background thread; a failure must never touch the chat path
+- Model: `INTENT_CLASSIFY_MODEL` (`gpt-oss-20b`, already configured at `config.py:72`)
+- Prompt asks for **strict JSON only**: `{"facts":[{"category","key","value"}]}` — categories restricted to the existing `_VALID_CATEGORIES` (`memory_service.py:62`)
+- Before writing: reuse `MemoryService._looks_secret()` (`:212`) and dedupe against existing facts (`remember()` already upserts by `(category,key)`)
+- Cap `MEMORY_EXTRACT_MAX_FACTS_PER_TURN` (3) so one chatty turn can't flood the table
+- Also write user-scoped facts into Phase 8's `um_facts` so `personalization.augment()` has something to inject
+
+**Config:** `MEMORY_EXTRACT_ENABLED` (True), `MEMORY_EXTRACT_MODEL`, `MEMORY_EXTRACT_MAX_FACTS_PER_TURN`, `MEMORY_EXTRACT_MIN_MESSAGE_CHARS`.
+
+**Verify:** have a short conversation mentioning a preference → `facts` count > 0 → next session's system prompt contains it (visible in `[PROMPT] System message length` log at `groq_service.py:466`).
+
+---
+
+### M4 — Verification coverage: 32/75 → ~70/75 *(~1.5 days)* ⭐ biggest lever
+
+This unblocks the cache, the skill learner, Phase 8 habits, and honest reporting all at once.
+
+**4a. Make tool metadata the source of truth.** `classify_family()` (`checker/checker.py:73`) currently guesses from the tool *name*. Change it to consult `registry.get(tool).verification.get("family")` **first**, falling back to the existing name heuristics. This is metadata-driven, so it satisfies Rule #10 — no hardcoded command lists.
+
+Canonical shape (replaces the ad-hoc `{"kind":"ui_state"}` used by the 4 UIA tools; update `CLAUDE.md` §7 to match reality):
+```python
+verification={"family": "open|close|toggle|ui|file|input|query|frontend|none",
+              "capability": "system.volume",   # optional
+              "target_key": "path"}            # optional, overrides _TARGET_KEYS
+```
+
+**4b. Add `family="query"` for read-only tools (~20 of the 43).** These have no side effect — nothing to verify. Verdict = PASS when the observation doesn't start with `ERROR`, source `"transport"`. Critically they must carry `cacheable=False` so time-varying output (`battery_status`, `get_datetime`) is never replayed as a cached *response*.
+
+Covers: `battery_status`, `system_resources`, `list_processes`, `get_datetime`, `network_info`, `list_directory`, `read_file`, `recall`, `gmail_inbox`, `gmail_unread`, `calendar_list`, `calendar_search`, `drive_search`, `drive_list`, `get_system_status`, plus three currently **misclassified**: `list_open_windows` (tagged `open`), `list_wifi_networks` (tagged `toggle`), `get_clipboard` (tagged `input`).
+
+**4c. Reach the `file` verifier that already exists but is never hit.** `classify_family` only matches `save|write_file|create_file|download`, so it misses `create_folder`, `delete_file`, `move_to_trash`, `move_path`, `take_screenshot`, `generate_image`. Tag them `family="file"` — `_verify_file` (`checker.py:382`) works as-is.
+
+**4d. Three new verifiers in `checker.py`:**
+- `_verify_frontend` — for `open_website`, `search_google`, `search_youtube`, `play_on_youtube`. These produce no server-side effect, but the browser already ACKs via `POST /api/activity/frontend-ack` (`dashboard.py`) and `action_sink.attach_dispatch()` (`execution/coordinator.py:87`) records the dispatch. Join on `(execution_id, action_id)`: ACK received → PASS.
+- `_verify_memory` — for `remember`, `forget`, `note_correction`: re-query `memory.db`.
+- `_verify_google` — for `calendar_create`, `calendar_delete`, `drive_upload`: re-query the API for the created/deleted id.
+
+**4e. Explicit `family="none"` for the genuinely unverifiable.** `shutdown_computer`, `restart_computer`, `sleep_computer`, `hibernate_computer`, `sign_out`, `lock_screen`, `do_multistep`. Honest UNKNOWN, never promoted. `camera_control` already self-verifies via registry read-back — tag it `family="toggle"` with `capability="privacy.camera"`.
+
+**4f. Declare `verification=` on every tool** across the 11 `tools/*.py` modules. Mechanical but must be complete — `ToolSpec.verification` already exists (`tool_registry.py:77`) and flows into `ActionSpec` (`execution/coordinator.py:48`), so no plumbing changes are needed.
+
+**Tests** (extend the existing 7-file suite): a `test_verifier_coverage.py` that asserts **every** registered tool resolves to a non-`None` family — this permanently prevents the 43-tool hole from reopening when tools are added.
+
+**Verify:** re-run `scripts/verdict_report.py` from M0. UNKNOWN share should fall from ~70% to a small residue of genuinely-unverifiable tools; `command_cache` entries should climb with normal use.
+
+---
+
+### M5 — Honest failure reporting *(~4h)*
+
+Right now Phase 4 finishes verification *after* the SSE stream has closed, so JARVIS says "done" and the FAIL is never surfaced to the user. It isn't lying on purpose — it's a timing gap.
+
+**The plumbing already exists.** `/api/activity/recent` returns verification rows including `verdict`, and `script.js:1536-1547` already polls it every 2s and renders them into the side activity panel. Only the *presentation* is missing.
+
+- **Backend** (`app/api/dashboard.py:199`): include a short human-readable `message` on each verification row (e.g. `"wifi_control didn't take effect — Wi-Fi is still off"`), built from the existing `reason` + `evidence` fields.
+- **Frontend** (`web/script.js`, inside `startBackgroundActivityPolling`): when `row.verdict === 'FAIL'`, in addition to the side panel, append a **correction bubble** into the chat thread, visually distinct (reuse the existing message-bubble CSS with a warning accent).
+- Only for FAIL. PASS/UNKNOWN stay in the side panel — otherwise it becomes noise.
+- Optional TTS for the correction, gated by the existing voice setting.
+
+**Verify:** turn Wi-Fi off manually, ask JARVIS to turn it off again, force a FAIL → a correction bubble appears within ~2s of the response.
+
+---
+
+### M6 — Speed *(~1.5 days)*
+
+**6a. Tool-result offloading.** `agent_loop.py:566-569` appends the full observation into `messages` as `role: "tool"`. `ui_list_controls` can emit up to `UIA_MAX_NODES=4000` nodes, and that payload is then re-sent to the LLM on every remaining step of a 16-step loop.
+
+Fix at that append site — **size-based, not a tool list** (keeps Rule #10):
+```
+if len(observation) > AGENT_TOOL_RESULT_MAX_CHARS (4000):
+    write data/tool_results/<execution_id>/<action_id>.txt
+    context gets: "[output 8,412 chars — saved to <path>, use read_file to read it]"
+```
+`read_file` is exempt from offloading, otherwise persist→read→persist loops. `data/tool_results/` is pruned by M2's retention.
+
+**6b. Early acknowledgment.** The pipeline is classify (up to `BRAIN_CLASSIFY_TIMEOUT=4`) → cache lookup → agent, and the UI is blank the whole time. `streaming.py:148` already emits an opening empty chunk — extend it to carry a lightweight "working on it" activity event before classification starts, so the orb/status reacts immediately.
+
+**6c. Response-length rules.** `_detect_repetition_loop` (`groq_service.py:39`) is a patch over a symptom. Add explicit style rules to `_JARVIS_SYSTEM_PROMPT_BASE` (`config.py:236`): confirmations one line; explanations ≤3 lines unless asked for detail; never restate an action already reported.
+
+Plus the M1 WAL fix — memory is read on every turn, and 2 MB of WAL scan was on that path.
+
+---
+
+### M7 — New tools *(~2.5 days)*
+
+Every new tool follows the standard `@tool()` pattern and declares `verification=` from day one (M4 rule). No changes outside the tool modules.
+
+**`file_tools.py`**
+- `_guard_path()` — accident guard. Block writes/deletes under `C:\Windows`, `C:\Program Files*`, and the JARVIS repo itself. Applied at the top of the 4 mutating tools. Reuses existing `_resolve()` (`:29`). Returns `ERROR: ...` (never raises), per §7.
+- `find_file` — SQLite index at `data/file_index.db` over user folders (Desktop/Documents/Downloads/Pictures/Videos/Music). Built once in a background thread at startup, refreshed incrementally. **Must not add a second poller** (Rule #11) — hook the existing watcher's tick rather than starting a new loop.
+- `read_document` — PDF/DOCX/XLSX text extraction (`pypdf`, `python-docx`, `openpyxl`), same `_MAX_READ` cap
+- `zip_files`, `unzip_file`
+
+**New `app/services/agent/tools/screen_tools.py`**
+- `read_screen` — Windows OCR via `winsdk.windows.media.ocr` (already a dependency). Returns text, not an image.
+- `screen_region_capture`
+
+**`system_tools.py`** — `app_volume`. Extend `tools/_audio.py` (which already owns a dedicated audio STA worker, `:154 _ensure_worker`) with per-session enumeration via pycaw `AudioUtilities.GetAllSessions()`. Must stay on that worker — never the UI apartment (CLAUDE.md §19).
+
+**`settings_tools.py`** — `bluetooth_connect_device` (pair/connect a named device, not just the radio toggle)
+
+**`google_tools.py`** — `gmail_send`, `calendar_update`, `drive_download`
+> ⚠ **Blocking prerequisite:** `GMAIL_SCOPES = ["...gmail.readonly"]` (`config.py:21`). Sending needs `gmail.send`. Changing scopes **invalidates the existing token** — `data/google_token.json` must be deleted and OAuth re-run. This is a one-time interactive step the user has to do; do it at the start of M7, not the end.
+
+**`desktop_tools.py`** — `clipboard_history`. The watcher already tracks clipboard; add a bounded ring buffer (last 20) there and expose it read-only. No new polling.
+
+**Not doing:** `run_shell_command`. It would bypass the entire tool-metadata, verification, and confirmation model for no capability that a targeted tool can't provide.
+
+---
+
+### M8 — Reminders / scheduler *(~3 days)*
+
+The only genuinely missing *subsystem*. Follows the established phase pattern exactly.
+
+**New `app/services/scheduler/`** — `models.py`, `store.py` (`data/scheduler.db`), `service.py` (one daemon thread, same shape as the watcher).
+
+Job kinds: `at` (one-shot), `every` (interval), `cron` (expression). Rows carry `state` (active/paused/done), `next_run_at`, `run_history`.
+
+**Tools** (`scheduler_tools.py`): `set_reminder`, `list_reminders`, `cancel_reminder`.
+
+**Delivery:** write into the existing `proactive.db` suggestions table — the frontend panel and `/api/proactive/pending` already render it. Plus a chat bubble via the M5 activity path.
+
+**Safety (non-negotiable):**
+- A scheduled job **never** auto-fires a `dangerous=True` tool. It becomes a suggestion requiring a fresh `ConfirmationGrant` (`execution/models.py:54`) — a grant issued when the reminder was *created* must not authorize firing it later.
+- All execution still routes through `ExecutionCoordinator` (Rule #4).
+- Respects `PROACTIVE_AUTO_ACT=False`.
+
+**Also hosts** M2's daily backup + retention job.
+
+**Startup:** slot between Phase 7 and Phase 8 in `startup.py`; stop in reverse order.
+
+---
+
+### M9 — User-authored SKILL.md skills *(~1 day)*
+
+Today `skills.db` holds only *auto-learned* skills (min 3 repeats). There's no way for the user to teach JARVIS a workflow by hand.
+
+- `data/skills_md/<name>/SKILL.md` with YAML frontmatter (`name`, `description`)
+- Loader at startup scans the directory; injects **only name + description** into the agent system prompt (keeps it small)
+- The agent reads the full body on demand via the existing `read_file` tool
+- Completely separate from `skills.db` — different directory, different table, no conflict with the learner
+- Config: `SKILLS_MD_ENABLED`, `SKILLS_MD_DIR`
+
+Example the user can write with zero code:
+```markdown
+---
+name: study-mode
+description: Set up the desktop for focused study
+---
+1. Close Discord and Spotify
+2. Set brightness to 40
+3. Open Notion
+4. Set volume to 20
+```
+
+---
+
+### M10 — MCP client *(~2.5 days, OPTIONAL — do last or skip)*
+
+Marked optional deliberately: it's real capability, but the least core to a Windows desktop voice assistant and the largest ongoing maintenance surface. Everything above should land first.
+
+- New `app/services/agent/mcp/` — client + a registration bridge that wraps each discovered MCP tool as a `ToolSpec` and calls `registry.register()`
+- Slots into `startup.py` right after `load_all_tools()` (step 5). **`AgentLoop` needs no changes** — it reads `registry.names()`, so new tools appear automatically
+- Every MCP tool gets `verification={"family": "none"}` → honest UNKNOWN → never cached. Correct and safe by default.
+- Execution still flows through `ExecutionCoordinator` — no second execute path (Rule #4)
+- Fail-soft: an unreachable server logs and is skipped; chat keeps working
+- Config-driven server list in `config.py`; no hardcoded servers
+
+---
+
+## Verification
+
+**Static — after every milestone** (from CLAUDE.md §16):
+```bash
+python -m compileall -q app tests scripts run.py config.py
+node --check web/script.js && node --check web/orb.js && node --check web/api-monitor.js
+python -m pytest tests/ -v
+```
+
+**New tests to add:**
+
+| Test | Milestone | Guards |
+|---|---|---|
+| `test_db_lifecycle.py` | M1 | WAL truncated + connections closed on shutdown |
+| `test_retention.py` | M2 | prune rules, backup integrity (temp dirs + fake clock) |
+| `test_memory_extractor.py` | M3 | JSON parsing, secret rejection, dedupe, per-turn cap |
+| `test_verifier_coverage.py` | M4 | **every** registered tool resolves to a family — prevents regression |
+| `test_query_family.py` | M4 | query-family tools PASS on success but are never cacheable |
+| `test_path_guard.py` | M7 | system paths blocked, user paths allowed |
+| `test_scheduler_safety.py` | M8 | dangerous tool never auto-fires; grant not reusable later |
+
+Follow the existing suite's discipline (CLAUDE.md §16): fake registries, fake watcher state, fake clocks, temp SQLite. **Never** real Wi-Fi toggling, shutdown, email send, file deletion, or browser side-effects.
+
+**End-to-end (manual, needs the running server):**
+1. `start.bat` → check `/health`
+2. `scripts/verdict_report.py` — compare against the M0 baseline
+3. Conversation mentioning a preference → confirm `facts` count rises → restart → confirm it's in the next system prompt
+4. Force a FAIL (ask to disable something already disabled) → correction bubble within ~2s
+5. Run a UIA-heavy command → confirm `data/tool_results/` gets a file and the loop stays fast
+6. Clean shutdown → confirm **no** `-wal` / `-shm` files remain
+7. `scripts/smoke_test.py`, `scripts/uia_probe.py status`, `scripts/cache_inspect.py`
+
+---
+
+## Sequencing & effort
+
+| # | Milestone | Effort | Depends on |
+|---|---|---|---|
+| M0 | Measure baseline | 2h | — |
+| M1 | Storage correctness (WAL) | 4h | — |
+| M2 | Retention + backup | 4h | M1 |
+| M3 | Memory extraction | 1d | M1 |
+| M4 | **Verification coverage** ⭐ | 1.5d | M0 |
+| M5 | Honest failure reporting | 4h | M4 |
+| M6 | Speed | 1.5d | M1 |
+| M7 | New tools | 2.5d | M4 |
+| M8 | Reminders / scheduler | 3d | M2 |
+| M9 | SKILL.md skills | 1d | — |
+| M10 | MCP *(optional)* | 2.5d | M4 |
+
+≈ **11 working days** for M0–M9; +2.5 if M10 is taken.
+
+M0+M1+M2 can land in a single day and are pure fixes with no behaviour change — good first commit.
+
+---
+
+## Housekeeping
+
+- **`CLAUDE.md` must be updated as we go** — it currently documents `verification={"strategy":..., "capability":...}` (§7), but no tool uses that shape. §7, §8, §14, §15, §18 will all shift. The file's own rule: *"If something here contradicts the code, the code wins — fix this file."*
+- **Leftover:** an empty locked `friends jarvis/` folder is still on disk (contents deleted). Close any Explorer window on it and `rmdir`, or it clears on reboot.
+- **`data/vector_store/index.faiss` + `index.pkl` are modified** in the working tree and uncommitted — decide whether these belong in git at all before the first commit of this work.
+
+## Non-goals
+
+- Network/auth hardening (`0.0.0.0`, CORS, tokens) — user declined; single-user local app
+- `run_shell_command` — bypasses the whole safety model
+- Chat-platform channels (Telegram/Discord/etc.) — remote access to a tool that can shut down the PC and read the camera, with no auth, is not a good trade
+- Rewriting the 5-DB layout, the phase structure, or the frontend framework choice — all sound decisions per CLAUDE.md §19

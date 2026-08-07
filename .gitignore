@@ -1,42 +1,47 @@
-# Secrets and local credentials
-.env
-credentials.json
-database/google_token.json
-data/google_token.json
-**/google_token.json
-
-# Python
+# ── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
+*.pyo
+*.pyd
 .pytest_cache/
-.mypy_cache/
-.ruff_cache/
+*.egg-info/
+dist/
+build/
 
-# Virtual environments
+# ── Virtual environments ──────────────────────────────────────────────────────
 .venv/
 venv/
 env/
 
-# IDE and OS files
-.idea/
-.vscode/
+# ── Environment & secrets  ────────────────────────────────────────────────────
+# These must NEVER be committed — they contain API keys and OAuth tokens.
+.env
+credentials.json
+data/google_token.json
+
+# ── SQLite WAL sidecar files ──────────────────────────────────────────────────
+# Created when the server runs; vanish after a clean shutdown (see CLAUDE.md §15).
+# They are runtime state, not source, and can be multi-MB.
+data/*.db-shm
+data/*.db-wal
+
+# ── Runtime data directories ──────────────────────────────────────────────────
+# Generated at runtime; large, personal, or ephemeral — not source.
+data/backups/          # daily SQLite snapshots — recoverable, not history
+data/chats_data/       # user conversation JSON — personal data
+data/debug_logs/       # per-turn structured JSON logs — ephemeral
+data/voice_cache/      # Edge TTS MP3 cache — regenerable
+data/tool_results/     # offloaded large tool outputs — ephemeral
+
+# ── Docs build artefacts ──────────────────────────────────────────────────────
+# M14 P0 baseline screenshots — large binary files, not source
+docs/ui_baseline/
+
+# ── OS / IDE ──────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
-
-# Logs and temporary files
-*.log
-*.tmp
-*.bak
-
-# Runtime state, caches, and user data
-database/
-data/voice_cache/
-*.db-wal
-*.db-shm
-
-# Build and coverage output
-build/
-dist/
-coverage/
-htmlcov/
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo

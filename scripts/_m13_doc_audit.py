@@ -41,8 +41,12 @@ def main():
         "app/services/groq_service.py",
         "app/services/realtime_service.py",
         "app/services/vision_service.py",
-        "web/script.js", "web/style.css", "web/index.html",
-        "web/orb.js", "web/viewer.html",
+        # [M14] web/script.js, web/orb.js and web/style.css are gone:
+        # the first two were split into web/js/*.js in P9, the third was an
+        # @import shim deleted in P12 once its last consumer was repointed.
+        "web/index.html", "web/viewer.html", "web/api-monitor.html",
+        "web/js/main.js", "web/js/chat.js", "web/js/orb.js",
+        "web/css/tokens.css", "web/css/layout.css",
     ]:
         print(f"  {lines(relative):>6}  {relative}")
 

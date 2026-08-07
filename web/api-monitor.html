@@ -9,7 +9,16 @@
     <title>J.A.R.V.I.S API Monitor</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <!-- Linked individually, not through style.css. That file is an @import
+         shim and @import is serial: six round trips chained behind one.
+         Keep this list and index.html in the same order -- the cascade is
+         the API, tokens first.  [M14 P11.4] -->
+    <link rel="stylesheet" href="css/tokens.css?v=20260804-p12">
+    <link rel="stylesheet" href="css/base.css?v=20260804-p12">
+    <link rel="stylesheet" href="css/layout.css?v=20260804-p12">
+    <link rel="stylesheet" href="css/chat.css?v=20260804-p12">
+    <link rel="stylesheet" href="css/panels.css?v=20260804-p12">
+    <link rel="stylesheet" href="css/floats.css?v=20260804-p12">
 </head>
 
 <body class="monitor-body">
@@ -19,6 +28,13 @@
                 <h1 class="monitor-title">API Key Monitor</h1>
                 <p class="monitor-subtitle">Live usage across all configured accounts</p>
             </div>
+            <nav class="surface-nav" aria-label="J.A.R.V.I.S surfaces">
+              <a href="/jarvis/">Chat</a>
+              <a href="/dashboard">Control Center</a>
+              <a href="/watcher">Watcher</a>
+              <a href="/jarvis/api-monitor.html" aria-current="page">API Monitor</a>
+              <a href="/health">Health</a>
+            </nav>
             <div class="monitor-head-right">
                 <div class="status-badge" id="monitor-status">
                     <span class="status-dot"></span>

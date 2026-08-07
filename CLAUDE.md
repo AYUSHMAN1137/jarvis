@@ -1,6 +1,6 @@
 # CLAUDE.md — J.A.R.V.I.S Project Brief
 
-> **Last updated:** 2026-08-01
+> **Last updated:** 2026-08-07
 > Single source of context for any AI agent working in this repo. **Read this FIRST.**
 > Every file path, line number, singleton, and constant below was verified against the working tree.
 > If something here contradicts the code, the code wins — fix this file.
@@ -14,6 +14,16 @@
 > duplicated/mis-attributed frontend actions, the silent no-op, and verify-before-reply.
 > Phase 2 replaced `BrainService` with `app/services/resolver.py` and deleted every
 > hardcoded language list. **`brain_service.py` no longer exists.**
+> **M14 (Frontend UI/UX/Performance) implemented 2026-08-07** — plan in
+> `IMPLEMENTATION_PLAN_UI_M14.md`, report in `IMPLEMENTATION_PLAN_UI_M14_REPORT.md`.
+> Rewrote monolithic `script.js` (3583 lines) into 24 ES modules under `web/js/`, split
+> `style.css` (4470 lines, 48 duplicate blocks) into 6 cascade-ordered sheets under
+> `web/css/`, added Ctrl+K command palette, streaming-safe markdown renderer (41 tests),
+> accessibility pass (36 invisible keyboard traps → 0, skip link, aria-hidden sweep),
+> orb GPU savings (DPR cap, visibility pause, adaptive quality), cross-surface admin theme,
+> asset versioning, and `web/viewer.html` dead-poll fix.
+> **`web/script.js`, `web/style.css`, `web/orb.js` deleted** (replaced by `web/js/` + `web/css/`).
+>
 > M9 (SKILL.md skills) and M10 (MCP client) are NOT yet implemented.
 >
 > **Numbers in this file were re-measured on 2026-08-01** with
@@ -133,7 +143,13 @@ jarvis/
 │   │   │       └── notes_tools.py     notes_manage, todo_manage, todo_item, note_correction (M8)
 │   │   └── ...all other services unchanged
 │   └── utils/                     key_rotation.py, retry.py, time_info.py
-├── web/                           Browser UI — orb dashboard, status states, ambient light, scroll FAB (M5+UI)
+├── web/                           Browser UI (M14: fully modularised)
+│   ├── index.html (564)           App shell. Load order is source of truth for CSS and JS.
+│   ├── favicon.svg                Inline SVG icon; also used by Notification API
+│   ├── viewer.html (708)          Standalone image/text viewer (dead polling removed M14)
+│   ├── api-monitor.html/js        API key usage dashboard
+│   ├── css/ (6 files)             tokens → base → layout → chat → panels → floats (ORDER LOAD-BEARING)
+│   └── js/ (24 modules + 1 test) Entry: main.js. Leaves: config, state, dom, bus, icons, orb.
 ├── data/
 │   ├── *.db                       8 SQLite DBs (adds file_index.db, reminders.db, notes.db — M8)
 │   ├── tool_results/              Offloaded large agent outputs (M6, pruned by M2)
@@ -160,6 +176,10 @@ jarvis/
 **Deleted in M13:** `app/services/brain_service.py`. The five-category classifier and
 its rule-based keyword fallback are gone; `app/services/resolver.py` replaces both.
 Anything still importing `BrainService` is stale.
+
+**Deleted in M14:** `web/script.js` (3583 lines), `web/style.css` (4470 lines),
+`web/orb.js` (459 lines). Replaced by `web/js/` (24 ES modules) and `web/css/` (6 files).
+Do not re-create these files; import from the modules or add CSS to the correct split file.
 
 **Stale doc warning:** `README.md` and `implementation_plan.md` reference an OLD layout (`phase4/`, `phase6/`, `phase7/`, `phase8/`, `skills/`, `frontend/`). Real names are `checker/`, `cache/`, `proactive/`, `personalization/`, `google/`, `web/`. Trust CLAUDE.md and the code, not those docs.
 
@@ -201,6 +221,7 @@ something** — its ack finally reaches a registered dispatch (§10).
 ### Dashboard — `app/api/dashboard.py`
 | GET | `/dashboard` | Control Center HTML |
 | GET | `/watcher` | Watcher dashboard HTML |
+| GET | `/static/admin.css` | Shared admin theme for both dashboards (M14 P11) |
 | GET | `/api/dashboard/state` | Aggregated state from all phases |
 | GET | `/api/watcher/state` | Live system state snapshot |
 | GET | `/api/activity/recent` | Phase 4 + Phase 6 activity feed (now includes human-readable `message` on FAIL rows) |
@@ -244,7 +265,7 @@ something** — its ack finally reaches a registered dispatch (§10).
 | GET | `/jarvis/c/{session_id}` | Serves the app shell for a client-side conversation URL |
 | GET | `/app/c/{session_id}` | Same, for the `/app` mount |
 
-**Static mounts:** `/jarvis` and `/app` → `web/`. `/` → 302 redirect to `/jarvis/`.
+**Static mounts:** `/jarvis` and `/app` → `web/`. `/` → 302 redirect to `/jarvis/`. **`app/static/` is NOT mounted** - the two dashboard HTML files are served by their own routes, and `admin.css` by the single `FileResponse` route above. A `StaticFiles` mount was deliberately avoided: it would expose both dashboards at a second URL with different behaviour.
 The two `c/{session_id}` routes are registered **with the routers, before the mounts**, so a hard refresh on a deep link hits the handler instead of 404ing on `StaticFiles`.
 
 ---
@@ -702,16 +723,16 @@ These bound the sidebar only. **`MAX_CHAT_HISTORY_TURNS` is unrelated** — it c
 
 ---
 
-## 13. Frontend (`web/`, ~9515 lines across these five files)
+## 13. Frontend (`web/`, M14: split into modules - no file over ~900 lines)
 
 | File | Lines | Purpose |
 |---|---|---|
-| `script.js` | 3583 | Chat logic, SSE parsing, PTT voice, camera, activity panel, orb dashboard, status badge states, scroll FAB, `handleActions()`, correction bubbles (M5), history drawer controller (M11), **M13 activity events: `understood` / `verifying` / `verdict` / `retrying` / `no_op_rejected`** |
-| `style.css` | 4470 | Dark glassmorphism, ambient light, star field, staggered animations, responsive (768/480 breakpoints), **history drawer + dialogs (M11)** |
-| `viewer.html` | 525 | Content/image viewer for background tasks |
+| `js/` (24 modules + 1 test) | ~7635 | **M14 P9 split `script.js` (3583 lines) into 24 ES modules.** Entry `main.js` (nothing may import it). Leaf modules import nothing: `config.js`, `state.js`, `dom.js`, `bus.js`, `icons.js`, `orb.js`. Cross-module talk through `bus.js`. Key modules: `chat.js` (SSE, activity events), `history.js` (drawer + tab title), `panels.js` (inert/aria sweep — state-based, never geometry), `voice.js`, `vision.js`, `orbctl.js`, `commands.js` (Ctrl+K, 16 commands), `markdown.js` (streaming-safe renderer, 41 tests in `markdown.test.mjs`). |
+| `css/` (6 files) | ~5230 | **M14 P8 split `style.css` (4470 lines, 48 duplicate blocks → 14 intentional overrides).** Load order: `tokens → base → layout → chat → panels → floats` — **this order is the API, never reorder or alphabetise**. Linked as six parallel `<link>`s (not `@import` — `@import` is serial). `web/style.css` deleted in P12. |
+| `viewer.html` | 636 | Standalone content/image viewer. **M14 P11.3: the dead `/tasks/{task_id}` polling is gone**; it now reads `?image=` / `?text=` or a same-origin `postMessage`. Nothing links to it, but it is inside the `/jarvis` mount, so a bookmark still works. Its tokens are a documented COPY of the chat tokens - it must render with the app down. |
 | `index.html` | 478 | Main chat UI shell + scroll FAB + orb dashboard panel + **history drawer & dialogs (M11)** |
-| `orb.js` | 459 | WebGL orb (GLSL shaders, simplex noise) + `setProperty()` / `setStateInstant()` / `applyGlobals()` |
-| `api-monitor.js/html` | 191 | API key usage dashboard |
+| `js/orb.js` | 459 | WebGL orb (GLSL shaders, simplex noise). **M14 P2: DPR capped at 1.25, pauses on `visibilitychange` and when occluded, `destroy()` releases the context.** Driven through `orbctl.js`, never directly. |
+| `api-monitor.js/html` | 191 | API key usage dashboard. **P11.4: now links the six chat stylesheets directly** instead of the deleted `style.css` shim. |
 
 **Design tokens:** `--bg: #050510` · `--accent: #7c6aef` · `--accent-secondary: #4ecdc4` · `--glass-bg: rgba(10,10,28,0.72)`
 
@@ -776,7 +797,7 @@ Key pieces: `CHAT_BASE_PATH` / `CHAT_URL_PREFIX` (derived from `location.pathnam
 `setActiveSession(id, urlMode)` and `selectConversation(id, {urlMode})` take a mode: `'replace'` (a draft becoming real), `'push'` (user opened another conversation), `'none'` (we got here *from* the URL — never write history back, or Back/Forward loops).
 
 Things that are easy to break here:
-- **`<base href="/jarvis/">` in `index.html` is load-bearing.** At `/jarvis/c/<id>` the relative `style.css` / `script.js` would otherwise be requested from `/jarvis/c/` and 404, leaving an unstyled dead page.
+- **`<base href="/jarvis/">` in `index.html` is load-bearing.** At `/jarvis/c/<id>` the relative `css/*.css` / `js/main.js` would otherwise be requested from `/jarvis/c/` and 404, leaving an unstyled dead page.
 - **The deep-link route must stay registered before the static mounts** (`main.py` includes routers first). Move it after and every hard refresh 404s.
 - **A dead id in the address bar re-404s on every refresh**, so `selectConversation` calls `syncUrl(null, 'replace')` when the id came from the URL.
 - **Back/Forward is refused while `isStreaming`**, and the address bar is put back with `syncUrl(sessionId, 'replace')` so the URL never disagrees with what is on screen.
@@ -863,7 +884,10 @@ Backups: `data/backups/YYYY-MM-DD/` — daily SQLite `.backup()` snapshots, kept
 ```bash
 # Static — always run these two before claiming done
 python -m compileall -q app tests scripts run.py config.py
-node --check web/script.js && node --check web/orb.js && node --check web/api-monitor.js
+# ES modules need the module parser; markdown has its own suite
+for f in web/js/*.js; do [ "$f" = web/js/markdown.test.mjs ] && continue; node --experimental-detect-module --check "$f" || echo "FAIL $f"; done
+node --check web/api-monitor.js
+node web/js/markdown.test.mjs   # expect: RESULT 41/41 passed
 
 # Unit / integration (347 passing in 25 files as of 2026-08-01; 215 before M13)
 python -m pytest tests/ -v
@@ -946,8 +970,8 @@ Main UI `http://localhost:8000/jarvis/` · Control Center `/dashboard` · Watche
 1. `run.py` binds `0.0.0.0` — should be `127.0.0.1` (user explicitly declined to fix for personal use)
 2. CORS allows all origins (`main.py` L93-99) — needs restriction (user declined)
 3. No API authentication (user declined — single-user local app)
-4. `web/style.css` has rule duplication (4470 lines) — some append-only overrides from iterative UI upgrades remain
-5. `viewer.html` calls `/tasks/{task_id}` — **backend route does not exist**
+4. ~~`web/style.css` rule duplication~~ - **fixed in M14.** P1 removed 48 duplicate blocks (14 real overrides kept and commented), P8 split the file into six by concern, P12 deleted the leftover shim. Body-element fingerprint identical before and after every step.
+5. ~~`viewer.html` calls `/tasks/{task_id}`~~ - **fixed in M14 P11.3.** The route died with the background-task system, so every visit was ~120 failing polls behind a spinner ending in a false "Task timed out". The page now takes its content from query parameters or a same-origin `postMessage`, and says plainly when it has none.
 6. Google OAuth `invalid_grant` when token expires — delete `data/google_token.json` and re-auth. **Also required after M7** because `gmail.send` scope was added — any token from before M7 will not have send permission.
 7. `README.md` / `implementation_plan.md` describe stale directory names (see §4)
 8. Broad dependency ranges in `requirements.txt` — no lockfile
@@ -1024,3 +1048,10 @@ Main UI `http://localhost:8000/jarvis/` · Control Center `/dashboard` · Watche
 | **Cache eligibility is recorded before execution, and defaults to ineligible (M13)** | The verdict that promotes an entry arrives before the reply is composed, so the flag has to be in place first. Defaulting an unrecorded command to *ineligible* means a new code path that forgets to declare eligibility loses speed, not correctness — the safe direction. |
 | **A cache replay is verified like any other execution (M13)** | Otherwise the fast path is the one path that can lie, and a stale entry would keep reporting success forever. The existing self-healing eviction depends on it. |
 | **The resolved goal is shown in the Activity panel every turn (M13)** | The one new failure mode this milestone introduces is a confidently-wrong resolution. Showing what was understood turns that from a mysterious wrong outcome into a visible misunderstanding the owner can correct immediately. It is the mitigation, not decoration. |
+| **Load order of the six stylesheets is documented, not alphabetical (M14 P8)** | `tokens, base, layout, chat, panels, floats`. The cascade is the API: `tokens` must precede everything, and `floats` deliberately overrides `panels`. An alphabetical or "tidied" order silently changes rendering, so the order lives in the HTML with a comment saying why. |
+| **The chat surface has no nav links; it uses the command palette (M14 P11.6)** | The four admin surfaces get a visible nav row. The chat is the surface that stays open all day, and permanent header links used once a week are how a header rots. Ctrl+K, group "Links", each opens a new tab so a reply in flight is never abandoned. |
+| **The two dashboards were measured before their CSS was merged (M14 P11.1)** | They look alike but share only 342 bytes verbatim: 18 common selectors, 6 identical, 12 deliberately different. Only identical rules and the `:root` superset moved to `admin.css`; merging `.card` or `.pill` would have restyled both pages. An unused custom property is inert - a changed `.card` is not. |
+| **`--text-dim` was NOT raised for contrast (M14 P12.1)** | It measures 5.31:1 on both the page and the glass, against a 4.5:1 requirement, so every selector the audit suspected already passes. `--text-muted` (2.35:1) stays low on purpose - placeholders, timestamps and disabled hints - and `prefers-contrast: more` lifts it. Changing a passing token to fix an imagined problem is how a design system rots. |
+| **Closed panels are made inert from app state, never from geometry (M14 P12.3)** | 36 focusable controls used to sit in closed panels, reachable by Tab and invisible. A geometry-based test seemed obvious and was wrong: panels slide for ~250ms, so "off-screen" is true while OPENING, and `openHistoryPanel()` focuses its search box immediately - the fix would have broken a working keyboard path. State (`.open` / `.visible` / `aria-hidden`) is true on the first frame. The same sweep repairs `aria-hidden` on the three class-only panels so the two signals cannot drift. |
+| **HTML is never cached immutably, versioned assets always are (M14 P12.4)** | The HTML carries the `?v=` strings, so caching it for a year ships an app that cannot update itself. Assets with `?v=` get a year and `immutable`; everything else gets `no-cache, must-revalidate`. This was verified by evaluating the real expressions from `middleware.py` against a 16-case truth table, because FastAPI is not installed here. |
+| **Chromium's virtual-time budget stops both rAF and CSS transitions (M14 traps)** | Any headless probe that waits for a transition or an animation frame will read the START state and pass or fail for the wrong reason. Set `transition: none` before reading geometry, and never assert on anything deferred by rAF. This cost two false failures in M14. |

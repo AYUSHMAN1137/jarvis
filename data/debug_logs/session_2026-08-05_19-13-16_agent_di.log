@@ -1,0 +1,284 @@
+====================================================================================================
+  J.A.R.V.I.S DEBUG LOG
+  Session : agent_direct
+  Started : 2026-08-05 19:13:16
+  File    : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\session_2026-08-05_19-13-16_agent_di.log
+  Trace   : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\trace.log
+====================================================================================================
+
+[19:13:16.513] ENVIRONMENT
+    python      : 3.12.10  (win32)
+    pywinauto   : 0.6.9
+    comtypes    : 1.4.16
+    pyautogui   : 0.9.54
+    pygetwindow : 0.0.9
+    pyperclip   : 1.11.0
+    uia config  : enabled=True library=pywinauto find_timeout=5.0
+    uia engine  : alive=True apartment=unknown generation=1 retired=0
+    tools       : 95 registered
+    foreground  : Sign in - Google Accounts and 7 more pages - Personal - Microsoft​ Edge
+
+====================================================================================================
+  TURN 01  |  19:13:16  |  session agent_di
+  USER: play ishq song
+====================================================================================================
+[19:13:16.515] [+ 0.001s] [T01] [AGENT] run_stream started | max_steps=16 | tools=95
+[19:13:16.515] [+ 0.001s] [T01] TOOL CATALOG | total=95 | ui_tools=8
+    ui: ui_click, ui_diagnostics, ui_do, ui_list_controls, ui_scroll, ui_set_toggle, ui_type_into, ui_wait
+[19:13:16.515] [+ 0.001s] [T01] [EXECUTION] STARTED | id=15254575e235
+    > command=play ishq song
+[19:13:16.515] [+ 0.001s] [T01] LLM CALL   step=1 provider=gemini/groq/auto
+[19:13:16.515] [+ 0.001s] [T01] LLM REPLY  step=1 -> final text (no tool calls)
+[19:13:16.515] [+ 0.001s] [T01] [AGENT] Final answer: Ishq is a song by Fahim Abdullah.
+
+[19:13:16.515] [+ 0.001s] [T01] TURN 01 END
+    reply: Ishq is a song by Fahim Abdullah.
+    turn duration: + 0.002s
+----------------------------------------------------------------------------------------------------
+[19:13:16.519] [+ 0.004s] [T01] HANDOFF -> agent | msg=play ishq song
+[19:13:16.519] [+ 0.004s] [T01] [AGENT] run_stream started | max_steps=16 | tools=95
+[19:13:16.519] [+ 0.004s] [T01] TOOL CATALOG | total=95 | ui_tools=8
+    ui: ui_click, ui_diagnostics, ui_do, ui_list_controls, ui_scroll, ui_set_toggle, ui_type_into, ui_wait
+[19:13:16.519] [+ 0.004s] [T01] [EXECUTION] STARTED | id=8bfaff05689a
+    > command=play ishq song
+[19:13:16.519] [+ 0.004s] [T01] LLM CALL   step=1 provider=gemini/groq/auto
+[19:13:16.519] [+ 0.004s] [T01] LLM REPLY  step=1 -> final text (no tool calls)
+[19:13:16.519] [+ 0.004s] [T01] [AGENT] NO-OP REJECTED -- nudging
+    > said=Done. | step=1
+[19:13:16.519] [+ 0.004s] [T01] LLM CALL   step=2 provider=gemini/groq/auto
+[19:13:16.519] [+ 0.004s] [T01] LLM REPLY  step=2 -> final text (no tool calls)
+[19:13:16.519] [+ 0.004s] [T01] [AGENT] NO-OP ADMITTED
+    > final=I wasn't able to carry that out — nothing was changed. Tell me a bit more and I'll try again.
+
+[19:13:16.519] [+ 0.004s] [T01] TURN 01 END
+    reply: I wasn't able to carry that out — nothing was changed. Tell me a bit more and I'll try again.
+    turn duration: + 0.008s
+----------------------------------------------------------------------------------------------------
+[19:13:16.523] [+ 0.008s] [T01] HANDOFF -> agent | msg=play ishq song
+[19:13:16.523] [+ 0.008s] [T01] [AGENT] run_stream started | max_steps=16 | tools=95
+[19:13:16.523] [+ 0.008s] [T01] TOOL CATALOG | total=95 | ui_tools=8
+    ui: ui_click, ui_diagnostics, ui_do, ui_list_controls, ui_scroll, ui_set_toggle, ui_type_into, ui_wait
+[19:13:16.523] [+ 0.008s] [T01] [EXECUTION] STARTED | id=8ebd3e7c6307
+    > command=play ishq song
+[19:13:16.523] [+ 0.008s] [T01] LLM CALL   step=1 provider=gemini/groq/auto
+[19:13:16.523] [+ 0.008s] [T01] LLM REPLY  step=1 -> tool_calls: [get_datetime]
+[19:13:16.523] [+ 0.008s] [T01] TOOL CALL  step=1 get_datetime
+[19:13:16.523] [+ 0.008s] [T01] TOOL OK   step=1 get_datetime took=0ms
+    > Wednesday, 05 August 2026, 07:13 PM India Standard Time
+[19:13:16.523] [+ 0.008s] [T01] LLM CALL   step=2 provider=gemini/groq/auto
+[19:13:16.523] [+ 0.008s] [T01] LLM REPLY  step=2 -> final text (no tool calls)
+[19:13:16.523] [+ 0.008s] [T01] [AGENT] Final answer: It is just past four.
+[19:13:16.523] [+ 0.008s] [T01] [EXECUTION] VERIFICATION QUEUED | id=8ebd3e7c6307
+    > source=agent | actions=1 | tool_results_ok=True
+
+[19:13:16.523] [+ 0.008s] [T01] TURN 01 END
+    reply: It is just past four.
+    turn duration: + 0.008s
+----------------------------------------------------------------------------------------------------
+[19:13:16.535] [+ 0.021s] [T01] HANDOFF -> agent | msg=play ishq song
+[19:13:16.535] [+ 0.021s] [T01] [AGENT] run_stream started | max_steps=16 | tools=95
+[19:13:16.535] [+ 0.021s] [T01] TOOL CATALOG | total=95 | ui_tools=8
+    ui: ui_click, ui_diagnostics, ui_do, ui_list_controls, ui_scroll, ui_set_toggle, ui_type_into, ui_wait
+[19:13:16.535] [+ 0.021s] [T01] [EXECUTION] STARTED | id=6796abbb1bff
+    > command=play ishq song
+[19:13:16.535] [+ 0.021s] [T01] LLM CALL   step=1 provider=gemini/groq/auto
+[19:13:16.535] [+ 0.021s] [T01] LLM REPLY  step=1 -> tool_calls: [get_datetime]
+[19:13:16.535] [+ 0.021s] [T01] TOOL CALL  step=1 get_datetime
+[19:13:16.535] [+ 0.021s] [T01] TOOL OK   step=1 get_datetime took=0ms
+    > Wednesday, 05 August 2026, 07:13 PM India Standard Time
+[19:13:16.535] [+ 0.021s] [T01] LLM CALL   step=2 provider=gemini/groq/auto
+[19:13:16.535] [+ 0.021s] [T01] LLM REPLY  step=2 -> final text (no tool calls)
+[19:13:16.535] [+ 0.021s] [T01] [AGENT] Final answer: Right now it's afternoon.
+[19:13:16.535] [+ 0.021s] [T01] [EXECUTION] VERIFICATION QUEUED | id=6796abbb1bff
+    > source=agent | actions=1 | tool_results_ok=True
+
+[19:13:16.535] [+ 0.021s] [T01] TURN 01 END
+    reply: Right now it's afternoon.
+    turn duration: + 0.021s
+----------------------------------------------------------------------------------------------------
+[19:13:16.535] [+ 0.021s] [T01] HANDOFF -> agent | msg=play ishq song
+[19:13:16.535] [+ 0.021s] [T01] [AGENT] run_stream started | max_steps=16 | tools=95
+[19:13:16.535] [+ 0.021s] [T01] TOOL CATALOG | total=95 | ui_tools=8
+    ui: ui_click, ui_diagnostics, ui_do, ui_list_controls, ui_scroll, ui_set_toggle, ui_type_into, ui_wait
+[19:13:16.535] [+ 0.021s] [T01] [EXECUTION] STARTED | id=f7be844154b7
+    > command=play ishq song
+[19:13:16.535] [+ 0.021s] [T01] LLM CALL   step=1 provider=gemini/groq/auto
+[19:13:16.535] [+ 0.021s] [T01] LLM REPLY  step=1 -> final text (no tool calls)
+[19:13:16.535] [+ 0.021s] [T01] [AGENT] NO-OP REJECTED -- nudging
+    > said=Done. | step=1
+[19:13:16.535] [+ 0.021s] [T01] LLM CALL   step=2 provider=gemini/groq/auto
+[19:13:16.535] [+ 0.021s] [T01] LLM REPLY  step=2 -> final text (no tool calls)
+[19:13:16.535] [+ 0.021s] [T01] [AGENT] NO-OP ADMITTED
+    > final=I wasn't able to carry that out — nothing was changed. Tell me a bit more and I'll try again.
+
+[19:13:16.535] [+ 0.021s] [T01] TURN 01 END
+    reply: I wasn't able to carry that out — nothing was changed. Tell me a bit more and I'll try again.
+    turn duration: + 0.021s
+----------------------------------------------------------------------------------------------------
+[19:13:16.552] [+ 0.038s] [T01] HANDOFF -> agent | msg=play ishq song
+[19:13:16.552] [+ 0.038s] [T01] [AGENT] run_stream started | max_steps=16 | tools=95
+[19:13:16.552] [+ 0.038s] [T01] TOOL CATALOG | total=95 | ui_tools=8
+    ui: ui_click, ui_diagnostics, ui_do, ui_list_controls, ui_scroll, ui_set_toggle, ui_type_into, ui_wait
+[19:13:16.552] [+ 0.038s] [T01] [EXECUTION] STARTED | id=b862bb129526
+    > command=play ishq song
+[19:13:16.552] [+ 0.038s] [T01] LLM CALL   step=1 provider=gemini/groq/auto
+[19:13:16.552] [+ 0.038s] [T01] LLM REPLY  step=1 -> final text (no tool calls)
+[19:13:16.552] [+ 0.038s] [T01] [AGENT] NO-OP REJECTED -- nudging
+    > said=Done. | step=1
+[19:13:16.553] [+ 0.039s] [T01] LLM CALL   step=2 provider=gemini/groq/auto
+[19:13:16.553] [+ 0.039s] [T01] LLM REPLY  step=2 -> final text (no tool calls)
+[19:13:16.553] [+ 0.039s] [T01] [AGENT] NO-OP ADMITTED
+    > final=I wasn't able to carry that out — nothing was changed. Tell me a bit more and I'll try again.
+
+[19:13:16.553] [+ 0.039s] [T01] TURN 01 END
+    reply: I wasn't able to carry that out — nothing was changed. Tell me a bit more and I'll try again.
+    turn duration: + 0.039s
+----------------------------------------------------------------------------------------------------
+[19:13:16.557] [+ 0.044s] [T01] [CACHE] EXECUTION MANIFEST | command=close it
+    > execution_id=run | steps=1 | tool_results_ok=True
+[19:13:16.558] [+ 0.044s] [T01] [CACHE] VERDICT RECEIVED | command=close it
+    > execution_id=run | action_id=a1 | verdict=PASS | tool=None
+[19:13:16.558] [+ 0.044s] [T01] [CACHE] NOT PROMOTED | command=close it
+    > reason=the original utterance did not stand on its own
+[19:13:16.561] [+ 0.047s] [T01] [CACHE] EXECUTION MANIFEST | command=open youtube
+    > execution_id=run-f | steps=1 | tool_results_ok=True
+[19:13:16.561] [+ 0.047s] [T01] [CACHE] VERDICT RECEIVED | command=open youtube
+    > execution_id=run-f | action_id=a1 | verdict=FAIL | tool=None
+[19:13:16.561] [+ 0.047s] [T01] [CACHE] EVICTED AFTER VERIFICATION FAILURE | command=open youtube
+    > execution_id=run-f
+[19:13:16.564] [+ 0.050s] [T01] [CACHE] EXECUTION MANIFEST | command=open youtube
+    > execution_id=run | steps=1 | tool_results_ok=True
+[19:13:16.565] [+ 0.051s] [T01] [CACHE] VERDICT RECEIVED | command=open youtube
+    > execution_id=run | action_id=a1 | verdict=PASS | tool=None
+[19:13:16.565] [+ 0.051s] [T01] [CACHE] PROMOTED | command=open youtube
+    > kind=tool | steps=1
+[19:13:16.568] [+ 0.053s] [T01] [CACHE] EXECUTION MANIFEST | command=open youtube
+    > execution_id=run | steps=1 | tool_results_ok=True
+[19:13:16.569] [+ 0.054s] [T01] [CACHE] VERDICT RECEIVED | command=open youtube
+    > execution_id=run | action_id=a1 | verdict=PASS | tool=None
+[19:13:16.569] [+ 0.054s] [T01] [CACHE] NOT PROMOTED | command=open youtube
+    > reason=the original utterance did not stand on its own
+[19:13:16.575] [+ 0.061s] [T01] [CACHE] EXECUTION MANIFEST | command=open youtube
+    > execution_id=run | steps=1 | tool_results_ok=True
+[19:13:16.576] [+ 0.062s] [T01] [CACHE] VERDICT RECEIVED | command=open youtube
+    > execution_id=run | action_id=a1 | verdict=PASS | tool=None
+[19:13:16.576] [+ 0.062s] [T01] [CACHE] PROMOTED | command=open youtube
+    > kind=tool | steps=1
+[19:13:16.578] [+ 0.064s] [T01] [CACHE] EXECUTION MANIFEST | command=play that one
+    > execution_id=run-0 | steps=1 | tool_results_ok=True
+[19:13:16.578] [+ 0.064s] [T01] [CACHE] VERDICT RECEIVED | command=play that one
+    > execution_id=run-0 | action_id=a1 | verdict=PASS | tool=None
+[19:13:16.579] [+ 0.065s] [T01] [CACHE] NOT PROMOTED | command=play that one
+    > reason=the original utterance did not stand on its own
+[19:13:16.579] [+ 0.065s] [T01] [CACHE] EXECUTION MANIFEST | command=play that one
+    > execution_id=run-1 | steps=1 | tool_results_ok=True
+[19:13:16.579] [+ 0.065s] [T01] [CACHE] VERDICT RECEIVED | command=play that one
+    > execution_id=run-1 | action_id=a1 | verdict=PASS | tool=None
+[19:13:16.579] [+ 0.065s] [T01] [CACHE] NOT PROMOTED | command=play that one
+    > reason=the original utterance did not stand on its own
+[19:13:16.579] [+ 0.065s] [T01] [CACHE] EXECUTION MANIFEST | command=play that one
+    > execution_id=run-2 | steps=1 | tool_results_ok=True
+[19:13:16.579] [+ 0.065s] [T01] [CACHE] VERDICT RECEIVED | command=play that one
+    > execution_id=run-2 | action_id=a1 | verdict=PASS | tool=None
+[19:13:16.579] [+ 0.065s] [T01] [CACHE] NOT PROMOTED | command=play that one
+    > reason=the original utterance did not stand on its own
+[19:13:16.579] [+ 0.065s] [T01] [CACHE] EXECUTION MANIFEST | command=play that one
+    > execution_id=run-3 | steps=1 | tool_results_ok=True
+[19:13:16.579] [+ 0.065s] [T01] [CACHE] VERDICT RECEIVED | command=play that one
+    > execution_id=run-3 | action_id=a1 | verdict=PASS | tool=None
+[19:13:16.579] [+ 0.065s] [T01] [CACHE] NOT PROMOTED | command=play that one
+    > reason=the original utterance did not stand on its own
+[19:13:16.579] [+ 0.065s] [T01] [CACHE] EXECUTION MANIFEST | command=play that one
+    > execution_id=run-4 | steps=1 | tool_results_ok=True
+[19:13:16.579] [+ 0.065s] [T01] [CACHE] VERDICT RECEIVED | command=play that one
+    > execution_id=run-4 | action_id=a1 | verdict=PASS | tool=None
+[19:13:16.580] [+ 0.066s] [T01] [CACHE] NOT PROMOTED | command=play that one
+    > reason=the original utterance did not stand on its own
+[19:13:16.584] [+ 0.069s] [T01] [CACHE] EXECUTION MANIFEST | command=open youtube
+    > execution_id=run | steps=1 | tool_results_ok=True
+[19:13:16.584] [+ 0.069s] [T01] [CACHE] VERDICT RECEIVED | command=open youtube
+    > execution_id=run | action_id=a1 | verdict=PASS | tool=None
+[19:13:16.584] [+ 0.069s] [T01] [CACHE] PROMOTED | command=open youtube
+    > kind=tool | steps=1
+[19:13:16.584] [+ 0.069s] [T01] [CACHE] EXECUTION MANIFEST | command=open youtube
+    > execution_id=run | steps=1 | tool_results_ok=True
+[19:13:16.584] [+ 0.069s] [T01] [CACHE] VERDICT RECEIVED | command=open youtube
+    > execution_id=run | action_id=a1 | verdict=PASS | tool=None
+[19:13:16.584] [+ 0.069s] [T01] [CACHE] PROMOTED | command=open youtube
+    > kind=tool | steps=1
+[19:13:16.593] [+ 0.078s] [T01] [CACHE] EXECUTION MANIFEST | command=open app
+    > execution_id=run-4 | steps=1 | tool_results_ok=True
+[19:13:16.593] [+ 0.078s] [T01] [CACHE] VERDICT RECEIVED | command=open app
+    > execution_id=run-4 | action_id=a1 | verdict=FAIL | tool=None
+[19:13:16.593] [+ 0.078s] [T01] [CACHE] EVICTED AFTER VERIFICATION FAILURE | command=open app
+    > execution_id=run-4
+[19:13:16.595] [+ 0.080s] [T01] [CACHE] VERDICT RECEIVED | command=open app
+    > execution_id=run-5 | action_id=a1 | verdict=PASS | tool=None
+[19:13:16.595] [+ 0.080s] [T01] [CACHE] EXECUTION MANIFEST | command=open app
+    > execution_id=run-5 | steps=1 | tool_results_ok=False
+[19:13:16.597] [+ 0.082s] [T01] [CACHE] NOT PROMOTED | command=open app
+    > reason=execution incomplete or no actions | execution_id=run-5
+[19:13:16.599] [+ 0.085s] [T01] [CACHE] EXECUTION MANIFEST | command=open and type
+    > execution_id=run-1 | steps=2 | tool_results_ok=True
+[19:13:16.599] [+ 0.085s] [T01] [CACHE] VERDICT RECEIVED | command=open and type
+    > execution_id=run-1 | action_id=a1 | verdict=PASS | tool=None
+[19:13:16.599] [+ 0.085s] [T01] [CACHE] VERDICT RECEIVED | command=open and type
+    > execution_id=run-1 | action_id=a2 | verdict=PASS | tool=None
+[19:13:16.600] [+ 0.086s] [T01] [CACHE] PROMOTED | command=open and type
+    > kind=plan | steps=2
+[19:13:16.601] [+ 0.087s] [T01] [CACHE] VERDICT RECEIVED | command=open app
+    > execution_id=run-2 | action_id=a1 | verdict=PASS | tool=None
+[19:13:16.601] [+ 0.087s] [T01] [CACHE] EXECUTION MANIFEST | command=open app
+    > execution_id=run-2 | steps=1 | tool_results_ok=True
+[19:13:16.601] [+ 0.087s] [T01] [CACHE] PROMOTED | command=open app
+    > kind=tool | steps=1
+[19:13:16.601] [+ 0.087s] [T01] [CACHE] EXECUTION MANIFEST | command=type it
+    > execution_id=run-3 | steps=1 | tool_results_ok=True
+[19:13:16.601] [+ 0.087s] [T01] [CACHE] VERDICT RECEIVED | command=type it
+    > execution_id=run-3 | action_id=a1 | verdict=UNKNOWN | tool=None
+[19:13:16.601] [+ 0.087s] [T01] [CACHE] NOT PROMOTED | command=type it
+    > reason=one or more actions were not verified PASS | execution_id=run-3
+[19:13:19.308] [+ 2.793s] [T01] [EXECUTION] STARTED | id=b6859a98aab4
+    > source=agent | actions=1
+[19:13:19.308] [+ 2.793s] [T01] TOOL CALL  step=1 good
+    args: value=4
+[19:13:19.308] [+ 2.793s] [T01] TOOL OK   step=1 good took=0ms
+    > done
+[19:13:19.308] [+ 2.793s] [T01] [EXECUTION] VERIFICATION QUEUED | id=b6859a98aab4
+    > source=agent | actions=1 | tool_results_ok=True
+[19:13:19.314] [+ 2.799s] [T01] [EXECUTION] STARTED | id=98b24808decb
+    > source=cache_plan | actions=2
+[19:13:19.314] [+ 2.799s] [T01] TOOL CALL  step=1 bad
+[19:13:19.314] [+ 2.799s] [T01] TOOL FAIL step=1 bad took=0ms
+    > ERROR: failed
+[19:13:19.314] [+ 2.799s] [T01] [EXECUTION] VERIFICATION QUEUED | id=98b24808decb
+    > source=cache_plan | actions=1 | tool_results_ok=False
+[19:13:19.356] [+ 2.842s] [T01] TOOL CALL  step=1 danger
+[19:13:19.356] [+ 2.842s] [T01] TOOL OK   step=1 danger took=0ms
+    > ok
+[19:13:19.356] [+ 2.842s] [T01] TOOL CALL  step=1 frontend
+[19:13:19.356] [+ 2.842s] [T01] TOOL OK   step=1 frontend took=0ms
+    > queued
+[19:13:19.403] [+ 2.889s] [T01] TOOL CALL  step=1 open_site
+    args: url=https://example.com
+[19:13:19.403] [+ 2.889s] [T01] TOOL OK   step=1 open_site took=0ms
+    > Opening https://example.com.
+[19:13:19.403] [+ 2.889s] [T01] TOOL CALL  step=1 open_site
+    args: url=https://example.com
+[19:13:19.417] [+ 2.903s] [T01] TOOL OK   step=1 open_site took=14ms
+    > Opening https://example.com.
+[19:13:19.421] [+ 2.907s] [T01] TOOL CALL  step=1 open_site
+    args: url=https://example.com
+[19:13:19.421] [+ 2.907s] [T01] TOOL OK   step=1 open_site took=0ms
+    > Opening https://example.com.
+[19:13:19.421] [+ 2.907s] [T01] TOOL CALL  step=1 quiet
+[19:13:19.421] [+ 2.907s] [T01] TOOL OK   step=1 quiet took=0ms
+    > ok
+[19:13:19.440] [+ 2.926s] [T01] TOOL CALL  step=1 open_site
+    args: url=https://example.com
+[19:13:19.440] [+ 2.926s] [T01] TOOL OK   step=1 open_site took=0ms
+    > Opening https://example.com.
+
+====================================================================================================
+  SESSION SUSPENDED (agent_direct) -- switching to s1
+====================================================================================================

@@ -1,0 +1,37 @@
+====================================================================================================
+  J.A.R.V.I.S DEBUG LOG
+  Session : 549d75c5-13dc-447a-a39d-f5f25155091d
+  Started : 2026-07-28 23:44:08
+  File    : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\session_2026-07-28_23-44-08_549d75c5.log
+  Trace   : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\trace.log
+====================================================================================================
+
+[23:44:08.368] ENVIRONMENT
+    python      : 3.12.10  (win32)
+    pywinauto   : 0.6.9
+    comtypes    : 1.4.16
+    pyautogui   : 0.9.54
+    pygetwindow : 0.0.9
+    pyperclip   : 1.11.0
+    uia config  : enabled=True library=pywinauto find_timeout=5.0
+    uia engine  : alive=True apartment=sta generation=1 retired=0
+    tools       : 88 registered
+    foreground  : J.A.R.V.I.S and 8 more pages - Personal - Microsoft​ Edge
+
+====================================================================================================
+  TURN 01  |  23:44:08  |  session 549d75c5
+  USER: (daily startup brief)
+====================================================================================================
+[23:44:08.370] [+ 0.001s] [T01] [STARTUP_BRIEF] START
+    > session_id=549d75c5-13d
+[23:44:17.259] [+ 8.890s] [T01] [STARTUP_BRIEF] FINISH
+    > chunks=62 | characters=280 | saved_empty=False
+
+[23:44:17.259] [+ 8.890s] [T01] TURN 01 END
+    reply: Good evening, Ayush. Today is Friday, July 28, 2026. Weather data for this location is not available at the moment. Since the forecast is unknown, consider keeping flexible plans. Your email status is unavailable right now. Your calendar status is unavailable right now.
+    turn duration: + 8.891s
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+  SESSION SUSPENDED (549d75c5-13dc-447a-a39d-f5f25155091d) -- switching to bfc58999-d0fd-4d91-b39c-99d564a80187
+====================================================================================================

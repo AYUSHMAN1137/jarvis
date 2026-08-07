@@ -1,0 +1,13 @@
+{
+  "session_id": "88730b7a-f7ee-42bc-845b-4b14a7d92026",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Please search the current weather and give me a 6-sentence startup briefing in English.\nLine 1: Say exactly this greeting: Good morning, Ayush.\nLine 2: Today is [Day], [Date].\nLine 3: Short weather summary for morning, afternoon, evening.\nLine 4: One sentence of advice based on weather.\nLine 5: Say exactly this email update: Your email status is unavailable right now.\nLine 6: Say exactly this calendar update: Your calendar status is unavailable right now.\nOutput ONLY the 6 sentences, no introductory or concluding text. English only."
+    },
+    {
+      "role": "assistant",
+      "content": ""
+    }
+  ]
+}

@@ -10,11 +10,59 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#050510">
+    <!-- [M14 P2.8] Tells the UA this document is dark, so native form
+         controls, scrollbars and the canvas backdrop render dark from the first
+         paint instead of flashing light. Paired with the CSS declaration in
+         :root. -->
+    <meta name="color-scheme" content="dark">
     <title>J.A.R.V.I.S</title>
+    <!-- [M14 P12.5] The tab title is rewritten at runtime to include the open
+         conversation, so a window with six tabs open is navigable. See
+         setDocumentTitle() in web/js/history.js. -->
+    <meta name="description"
+        content="J.A.R.V.I.S - a personal AI assistant with voice, vision, reminders, notes and a live activity trace.">
+    <!-- [M14 P12.5] Inline SVG favicon: no binary asset, no extra request, and
+         it scales. favicon.svg exists as a real file too, because the
+         Notification API needs a URL and cannot always take a data URI. -->
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=20260725-v2">
+    <!-- [M14 P8.4] style.css was split into web/css/*.css. These are seven
+         separate <link> tags rather than @import because @import is serial:
+         the browser cannot discover the second file until the first has been
+         fetched and parsed, chaining render-blocking requests. <link> tags are
+         fetched in parallel.
+
+         ORDER IS THE API. Same-specificity conflicts are resolved by source
+         order, so reordering these lines changes rendering. tokens.css must
+         stay first -- every other file reads its custom properties.
+
+         web/style.css was an @import shim kept for anything not yet repointed.
+         api-monitor.html was its last consumer, repointed in P11.4, so the
+         shim was deleted in P12. If you find a bookmark or an old page still
+         asking for style.css, link these six files instead, in this order. -->
+    <!-- ONE version string for every asset.  [M14 P12.4]
+         Bump this date-and-number and nothing else when you change any CSS or
+         any JS. Before this, style.css carried ?v=20260725-v2 while script.js
+         and orb.js carried no version at all, so a browser could hold stale JS
+         against fresh CSS indefinitely and the symptom looked like a bug in
+         whatever you had just written.
+
+         The other half of this lives in app/core/middleware.py: anything with
+         ?v= is served immutable, anything without it must revalidate. That is
+         what makes a FORGOTTEN bump harmless instead of mysterious.
+
+         index.html itself is never immutable -- it carries these strings. -->
+    <link rel="stylesheet" href="css/tokens.css?v=20260804-p12">
+    <link rel="stylesheet" href="css/base.css?v=20260804-p12">
+    <link rel="stylesheet" href="css/layout.css?v=20260804-p12">
+    <link rel="stylesheet" href="css/chat.css?v=20260804-p12">
+    <link rel="stylesheet" href="css/panels.css?v=20260804-p12">
+    <link rel="stylesheet" href="css/floats.css?v=20260804-p12">
 </head>
 <body>
+    <!-- [M14 P12.3] First focusable element in the document, by design.
+         Becomes visible on focus - see .skip-link in css/base.css. -->
+    <a class="skip-link" href="#message-input">Skip to the message box</a>
     <div class="app">
         <div id="orb-container"></div>
         <header class="header glass-panel">
@@ -41,36 +89,49 @@
                         <path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-7.6 4.2"/><path d="M3 4v3.5H6.5"/><path d="M12 8v4l3 2"/>
                     </svg>
                 </button>
-                <button class="btn-icon activity-toggle" id="activity-toggle" title="View activity flow">
+                <button class="btn-icon activity-toggle" id="activity-toggle" title="View activity flow" aria-label="View activity flow">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                 </button>
-                <button class="btn-icon search-results-toggle" id="search-results-toggle" title="View search results" style="display: none;">
+                <button class="btn-icon search-results-toggle" id="search-results-toggle" title="View search results" style="display: none;" aria-label="View search results">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                     </svg>
                 </button>
-                <button class="btn-icon orb-dashboard-btn" id="orb-dashboard-btn" title="Orb Customization">
+                <button class="btn-icon new-chat-btn" id="new-chat-btn" title="New Chat" aria-label="New Chat">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                </button>
+                <div class="header-more" id="header-more">
+                    <button class="btn-icon header-more-btn" id="header-more-btn" type="button"
+                            aria-label="More options" aria-haspopup="true" aria-expanded="false"
+                            aria-controls="header-more-menu">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+                    </button>
+                    <div class="header-menu" id="header-more-menu" role="menu"
+                         aria-labelledby="header-more-btn" hidden>
+                <button class="btn-icon header-menu-item orb-dashboard-btn" id="orb-dashboard-btn" title="Orb Customization" aria-label="Orb Customization" role="menuitem" tabindex="-1">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
                     </svg>
-                </button>
-                <button class="btn-icon settings-btn" id="settings-btn" title="Settings">
+                    <span class="header-menu-label">Orb customization</span>
+                    </button>
+                <button class="btn-icon header-menu-item settings-btn" id="settings-btn" title="Settings" aria-label="Settings" role="menuitem" tabindex="-1">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
                     </svg>
-                </button>
-                <button class="btn-icon monitor-btn" id="monitor-btn" title="Open API Key Monitor">
+                    <span class="header-menu-label">Settings</span>
+                    </button>
+                <button class="btn-icon header-menu-item monitor-btn" id="monitor-btn" title="Open API Key Monitor" aria-label="Open API Key Monitor" role="menuitem" tabindex="-1">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="12" y1="20" x2="12" y2="10" />
                         <line x1="18" y1="20" x2="18" y2="4" />
                         <line x1="6" y1="20" x2="6" y2="14" />
                     </svg>
-                </button>
-                <button class="btn-icon new-chat-btn" id="new-chat-btn" title="New Chat">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                    </svg>
-                </button>
+                    <span class="header-menu-label">API key monitor</span>
+                    </button>
+                    </div>
+                </div>
             </div>
         </header>
         <div class="history-overlay" id="history-overlay" hidden></div>
@@ -138,7 +199,8 @@
             </div>
         </aside>
         <main class="chat-area" id="chat-area">
-            <div class="chat-messages" id="chat-messages">
+            <div class="chat-messages" id="chat-messages" tabindex="0" role="log"
+                aria-label="Conversation" aria-live="polite" aria-relevant="additions">
                 <div class="welcome-screen" id="welcome-screen">
                     <div class="welcome-icon">
                         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -175,7 +237,7 @@
                     </div>
                 </div>
             </div>
-            <button class="scroll-fab" id="scroll-fab" title="Scroll to bottom" aria-hidden="true">
+            <button class="scroll-fab" id="scroll-fab" title="Scroll to bottom" aria-hidden="true" aria-label="Scroll to bottom">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
         </main>
@@ -186,17 +248,17 @@
                           rows="1"
                           maxlength="32000"></textarea>
                 <div class="input-actions">
-                    <button class="action-btn reminders-btn" id="reminders-btn" title="Reminders">
+                    <button class="action-btn reminders-btn" id="reminders-btn" title="Reminders" aria-label="Reminders">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M5 3L2 6"/><path d="M22 6l-3-3"/><path d="M6.38 18.7L4 21"/><path d="M17.64 18.67L20 21"/>
                         </svg>
                     </button>
-                    <button class="action-btn notes-btn" id="notes-btn" title="Notes & To-Do">
+                    <button class="action-btn notes-btn" id="notes-btn" title="Notes & To-Do" aria-label="Notes & To-Do">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
                         </svg>
                     </button>
-                    <button class="action-btn cam-btn" id="cam-btn" title="Camera — capture and send for vision">
+                    <button class="action-btn cam-btn" id="cam-btn" title="Camera — capture and send for vision" aria-label="Camera - capture and send for vision">
                         <svg class="cam-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                             <circle cx="12" cy="13" r="4"/>
@@ -206,7 +268,7 @@
                             <circle cx="12" cy="13" r="4" fill="currentColor"/>
                         </svg>
                     </button>
-                    <button class="action-btn mic-btn" id="mic-btn" title="Voice input — hold Ctrl+Shift to speak">
+                    <button class="action-btn mic-btn" id="mic-btn" title="Voice input — hold Ctrl+Shift to speak" aria-label="Voice input - hold Ctrl+Shift to speak">
                         <svg class="mic-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
                         </svg>
@@ -214,7 +276,7 @@
                             <rect x="4" y="4" width="16" height="16" rx="3"/>
                         </svg>
                     </button>
-                    <button class="action-btn tts-btn" id="tts-btn" title="Text to Speech">
+                    <button class="action-btn tts-btn" id="tts-btn" title="Text to Speech" aria-label="Text to Speech">
                         <svg class="tts-icon-off" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
                             <line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
@@ -225,9 +287,15 @@
                             <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
                         </svg>
                     </button>
-                    <button class="action-btn send-btn" id="send-btn" title="Send message">
+                    <button class="action-btn send-btn" id="send-btn" title="Send message" aria-label="Send message">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                        </svg>
+                    </button>
+                    <!-- M14 P3: Stop shares the send slot; JS keeps exactly one visible. -->
+                    <button class="action-btn stop-btn" id="stop-btn" type="button" title="Stop generating (Esc)" aria-label="Stop generating" hidden>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/>
                         </svg>
                     </button>
                 </div>
@@ -276,7 +344,7 @@
                         <span class="toggle-slider"></span>
                     </label>
                 </div>
-                <p class="settings-hint">Activity and search panels open automatically when data is available. Thinking sounds play a short cue while the AI processes. Hold Ctrl+Shift to speak — release to send.</p>
+                <p class="settings-hint">Activity and search panels open automatically when data is available. Thinking sounds play a short cue while the AI processes. Hold Ctrl+Shift to speak — release to send. Press <kbd>?</kbd> anywhere for the full list of keyboard shortcuts, or <kbd>Ctrl</kbd>+<kbd>K</kbd> for the command palette.</p>
             </div>
         </div>
         <!-- ══════ Orb Customization Dashboard ══════ -->
@@ -411,7 +479,7 @@
         <div class="jarvis-panel reminders-panel" id="reminders-panel" aria-hidden="true">
             <div class="jarvis-panel-header" id="reminders-panel-header">
                 <span class="jarvis-panel-title">
-                    <span class="jarvis-panel-icon">⏰</span> Reminders
+                    <span class="jarvis-panel-icon" aria-hidden="true">⏰</span> Reminders
                 </span>
                 <div class="jarvis-panel-controls">
                     <button class="jarvis-panel-btn" id="reminders-minimize" title="Minimize">−</button>
@@ -420,7 +488,7 @@
             </div>
             <div class="jarvis-panel-body" id="reminders-panel-body">
                 <div class="reminders-empty" id="reminders-empty">
-                    <span class="empty-icon">🔔</span>
+                    <span class="empty-icon" aria-hidden="true">🔔</span>
                     <p>No active reminders.</p>
                     <p class="empty-hint">Say "Remind me to..." to create one.</p>
                 </div>
@@ -433,7 +501,7 @@
         <div class="jarvis-panel notes-panel" id="notes-panel" aria-hidden="true">
             <div class="jarvis-panel-header" id="notes-panel-header">
                 <span class="jarvis-panel-title">
-                    <span class="jarvis-panel-icon">📋</span> Notes & To-Do
+                    <span class="jarvis-panel-icon" aria-hidden="true">📋</span> Notes & To-Do
                 </span>
                 <div class="jarvis-panel-controls">
                     <button class="jarvis-panel-btn" id="notes-minimize" title="Minimize">−</button>
@@ -441,14 +509,14 @@
                 </div>
             </div>
             <div class="notes-tabs" id="notes-tabs">
-                <button class="notes-tab active" data-tab="notes" id="notes-tab-notes">📝 Notes</button>
-                <button class="notes-tab" data-tab="todo" id="notes-tab-todo">✅ To-Do</button>
+                <button class="notes-tab active" data-tab="notes" id="notes-tab-notes"><span aria-hidden="true">📝</span>Notes</button>
+                <button class="notes-tab" data-tab="todo" id="notes-tab-todo"><span aria-hidden="true">✅</span>To-Do</button>
             </div>
             <div class="jarvis-panel-body" id="notes-panel-body">
                 <!-- Notes Tab Content -->
                 <div class="notes-tab-content active" id="notes-content">
                     <div class="notes-empty" id="notes-empty">
-                        <span class="empty-icon">📝</span>
+                        <span class="empty-icon" aria-hidden="true">📝</span>
                         <p>No notes yet.</p>
                         <p class="empty-hint">Say "Create a note about..." to start.</p>
                     </div>
@@ -457,7 +525,7 @@
                 <!-- To-Do Tab Content -->
                 <div class="notes-tab-content" id="todo-content">
                     <div class="todo-empty" id="todo-empty">
-                        <span class="empty-icon">✅</span>
+                        <span class="empty-icon" aria-hidden="true">✅</span>
                         <p>No to-do lists yet.</p>
                         <p class="empty-hint">Say "Create a shopping list" to start.</p>
                     </div>
@@ -472,7 +540,24 @@
 
         <!-- Notification sound (generated programmatically, no file needed) -->
     </div>
-    <script src="orb.js?v=20260725-v2"></script>
-    <script src="script.js?v=20260729-m8"></script>
+    <!-- One entry point. Everything else is reached by import, so the load
+         order is declared by the dependency graph instead of by the order of
+         script tags - which is what actually broke when this was three
+         classic scripts sharing one global scope.
+
+         type="module" is deferred by spec: this runs after the document is
+         parsed and before DOMContentLoaded, so module top-level code can look
+         elements up safely without waiting for an event.
+
+         Modules are fetched with CORS rules and need a JavaScript MIME type,
+         so this must be served by the app mount, not opened from file://.
+           [M14 P9.5] -->
+    <script type="module" src="./js/main.js?v=20260804-p12"></script>
+    <!-- Dev-only perf overlay (M14 P0). Inert unless ?perf=1 or
+         localStorage.jarvis_perf === '1'. See web/js/devtools.js. -->
+    <script type="module">
+        import { initDevtools } from './js/devtools.js?v=20260804-p12';
+        try { initDevtools(); } catch (e) { console.warn('[perf] init failed', e); }
+    </script>
 </body>
 </html>

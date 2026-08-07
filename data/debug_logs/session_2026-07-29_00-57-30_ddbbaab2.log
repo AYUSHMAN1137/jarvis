@@ -1,0 +1,91 @@
+====================================================================================================
+  J.A.R.V.I.S DEBUG LOG
+  Session : ddbbaab2-9842-4472-a5f4-028b74a7a1de
+  Started : 2026-07-29 00:57:30
+  File    : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\session_2026-07-29_00-57-30_ddbbaab2.log
+  Trace   : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\trace.log
+====================================================================================================
+
+[00:57:30.655] ENVIRONMENT
+    python      : 3.12.10  (win32)
+    pywinauto   : 0.6.9
+    comtypes    : 1.4.16
+    pyautogui   : 0.9.54
+    pygetwindow : 0.0.9
+    pyperclip   : 1.11.0
+    uia config  : enabled=True library=pywinauto find_timeout=5.0
+    uia engine  : alive=True apartment=sta generation=1 retired=0
+    tools       : 88 registered
+    foreground  : J.A.R.V.I.S and 8 more pages - Personal - Microsoft​ Edge
+
+====================================================================================================
+  TURN 01  |  00:57:30  |  session ddbbaab2
+  USER: Hello Jarvis, how are you?
+====================================================================================================
+[00:57:30.659] [+ 0.002s] [T01] [TURN] START
+    > turn_id=8a9d845e6047 | session_id=ddbbaab2-984 | has_image=False
+[00:57:31.180] [+ 0.522s] [T01] [ROUTE] CLASSIFIED
+    > turn_id=8a9d845e6047 | category=general | method=llm | elapsed_ms=515
+[00:57:31.183] [+ 0.526s] [T01] [ROUTE] CONVERSATION STREAM
+    > route=general
+[00:57:32.394] [+ 1.737s] [T01] [STREAM] COMPLETED
+    > route=general | chunks=15 | characters=52
+
+[00:57:32.395] [+ 1.738s] [T01] TURN 01 END
+    reply: I'm good, thanks, Ayush. How can I assist you today?
+    turn duration: + 1.738s
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+  TURN 02  |  00:57:41  |  session ddbbaab2
+  USER: How's the weather today, man?
+====================================================================================================
+[00:57:41.442] [+ 0.001s] [T02] [TURN] START
+    > turn_id=5568f24b0ff5 | session_id=ddbbaab2-984 | has_image=False
+[00:57:41.977] [+ 0.537s] [T02] [ROUTE] CLASSIFIED
+    > turn_id=5568f24b0ff5 | category=realtime | method=llm | elapsed_ms=533
+[00:57:41.982] [+ 0.541s] [T02] [ROUTE] CONVERSATION STREAM
+    > route=realtime
+[00:57:47.205] [+ 5.764s] [T02] [STREAM] COMPLETED
+    > route=realtime | chunks=56 | characters=203
+
+[00:57:47.206] [+ 5.765s] [T02] TURN 02 END
+    reply: In Dehradun it’s about 79 °F (23 °C) now with patchy rain and fog, a 95 % chance of showers later, and temperatures expected to reach roughly 82 °F this afternoon before dropping to around 74 °F tonight.
+    turn duration: + 5.765s
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+  TURN 03  |  00:58:45  |  session ddbbaab2
+  USER: Tell me today's latest news.
+====================================================================================================
+[00:58:45.740] [+ 0.000s] [T03] [TURN] START
+    > turn_id=4d4d7de29f79 | session_id=ddbbaab2-984 | has_image=False
+[00:58:46.157] [+ 0.416s] [T03] [ROUTE] CLASSIFIED
+    > turn_id=4d4d7de29f79 | category=realtime | method=llm | elapsed_ms=412
+[00:58:46.161] [+ 0.421s] [T03] [ROUTE] CONVERSATION STREAM
+    > route=realtime
+[00:58:50.862] [+ 5.122s] [T03] [STREAM] COMPLETED
+    > route=realtime | chunks=81 | characters=415
+
+[00:58:50.862] [+ 5.122s] [T03] TURN 03 END
+    reply: Japan’s Kyushu region was hit by a strong quake, triggering landslides and trapping dozens in a collapsed shopping‑mall, while in Washington a presidential pardon for former officials sparked debate over whether it would protect Dr. Fauci from congressional testimony; meanwhile, President Zelenskyy and Israeli Prime Minister Netanyahu met today amid rising tensions in Ukraine and ongoing drone strikes on Moscow.
+    turn duration: + 5.122s
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+  TURN 04  |  00:59:07  |  session ddbbaab2
+  USER: Any Indian news please?
+====================================================================================================
+[00:59:07.093] [+ 0.000s] [T04] [TURN] START
+    > turn_id=74c7a9d8444f | session_id=ddbbaab2-984 | has_image=False
+[00:59:07.491] [+ 0.398s] [T04] [ROUTE] CLASSIFIED
+    > turn_id=74c7a9d8444f | category=realtime | method=llm | elapsed_ms=394
+[00:59:07.495] [+ 0.402s] [T04] [ROUTE] CONVERSATION STREAM
+    > route=realtime
+[00:59:12.677] [+ 5.584s] [T04] [STREAM] COMPLETED
+    > route=realtime | chunks=57 | characters=280
+
+[00:59:12.679] [+ 5.586s] [T04] TURN 04 END
+    reply: India is grappling with severe monsoon flooding in Assam—the worst in years—with thousands displaced and rescue efforts under way, while Gen Z activists have turned the cockroach into a protest symbol, prompting Prime Minister Modi’s “Wed in India” campaign to address the unrest.
+    turn duration: + 5.586s
+----------------------------------------------------------------------------------------------------

@@ -77,6 +77,23 @@ async def frontend_action_ack(request: Request):
 
 _WATCHER_DASH_FILE = Path(__file__).resolve().parent.parent / "static" / "watcher_dashboard.html"
 _CONTROL_DASH_FILE = Path(__file__).resolve().parent.parent / "static" / "dashboard.html"
+_ADMIN_CSS_FILE = Path(__file__).resolve().parent.parent / "static" / "admin.css"
+
+
+@router.get("/static/admin.css", include_in_schema=False)
+async def admin_css():
+    """Serve the shared admin theme for /dashboard and /watcher.  [M14 P11.1]
+
+    app/static/ is deliberately NOT a StaticFiles mount -- main.py mounts only
+    /jarvis and /app, both pointing at web/. Rather than expose a whole new
+    directory to serve one stylesheet, this route serves that one named file,
+    the same way the two dashboards above are already served from here.
+
+    No path parameter, so there is nothing to traverse.
+    """
+    if not _ADMIN_CSS_FILE.exists():
+        raise HTTPException(status_code=404, detail="admin.css not available")
+    return FileResponse(str(_ADMIN_CSS_FILE), media_type="text/css")
 
 
 @router.get("/api/watcher/state")

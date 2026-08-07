@@ -1,0 +1,33 @@
+====================================================================================================
+  J.A.R.V.I.S DEBUG LOG
+  Session : uia-probe
+  Started : 2026-07-25 23:28:18
+  File    : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\session_2026-07-25_23-28-18_uia-prob.log
+  Trace   : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\trace.log
+====================================================================================================
+
+[23:28:18.718] ENVIRONMENT
+    python      : 3.12.10  (win32)
+    pywinauto   : 0.6.9
+    comtypes    : 1.4.16
+    pyautogui   : 0.9.54
+    pygetwindow : 0.0.9
+    pyperclip   : 1.11.0
+    uia config  : enabled=True library=pywinauto find_timeout=5.0
+    uia engine  : alive=True apartment=unknown generation=1 retired=0
+    tools       : 0 registered
+    foreground  : Administrator: Windows PowerShell
+
+====================================================================================================
+  TURN 01  |  23:28:18  |  session uia-prob
+  USER: probe list Settings
+====================================================================================================
+[23:28:18.724] [+ 0.004s] [T01] UIA-DIAG list.begin | window=Settings | control_type=<any> | limit=25 | include_text=False | foreground=Administrator: Windows PowerShell
+[23:28:18.724] [+ 0.004s] [T01] UIA-DIAG backend.ready | library=pywinauto | generation=1 | apartment=sta | op_timeout=20.0 | max_nodes=4000
+[23:28:18.825] [+ 0.104s] [T01] UIA-DIAG list.enumerated | requested=Settings | resolved=Settings | strategy=title-match(1.00) | nodes=0 | returned=0 | actionable_total=0 | truncated=False
+[23:28:18.825] [+ 0.104s] [T01] UIA-TREE window='Settings' | controls=0 | showing 0
+
+[23:28:18.826] [+ 0.106s] [T01] TURN 01 END
+    reply: probe list finished
+    turn duration: + 0.106s
+----------------------------------------------------------------------------------------------------

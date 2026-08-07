@@ -1,0 +1,138 @@
+/* ====================================================================
+   J.A.R.V.I.S - shared admin theme.  [M14 P11.1]
+   --------------------------------------------------------------------
+   Used by BOTH admin surfaces:
+     /dashboard  ->  app/static/dashboard.html          (Control Center)
+     /watcher    ->  app/static/watcher_dashboard.html  (Watcher)
+
+   WHAT IS AND IS NOT IN HERE, AND WHY
+
+   The two dashboards were assumed to be full copies of each other. They
+   are not - measured, not guessed:
+
+     selectors present in both : 18
+       identical declarations  :  6
+       differing declarations  : 12   (.card, .pill, .dot, .bar, header...)
+     control-only selectors    : 41
+     watcher-only selectors    : 51
+
+   So only two things moved here: the :root token block, and the six
+   rules that were character-for-character identical. Everything else
+   differs in real values - .logo is 36px on one surface and 34px on the
+   other - and those are choices, not drift. Flattening them would be a
+   redesign wearing a refactor's clothes.
+
+   The token block is the part that actually mattered. Change --accent
+   here and BOTH dashboards change. That was the point.
+
+   --purple is used only by the Control Center. It lives here anyway:
+   one token file with one unused token beats a token living somewhere
+   its siblings do not.
+
+   The admin palette is deliberately NOT the chat palette. Chat is an
+   ambient consumer surface; these are dense ops read-outs. Two dialects
+   on purpose is fine. Three by accident was not.
+
+   SERVED BY: app/api/dashboard.py -> GET /static/admin.css
+   app/static/ is NOT a StaticFiles mount. dashboard.py already serves
+   both dashboards out of this directory by reading the file directly,
+   and it serves this one the same way. Do not assume a mount exists.
+   ==================================================================== */
+
+:root{
+    --bg:#070b12; --bg2:#0b1019; --card:#121a2b; --card2:#0f1626;
+    --line:#1e2a40; --txt:#e8eef6; --mut:#8190a8; --accent:#3da9fc;
+    --ok:#3ad17f; --okbg:rgba(58,209,127,.13); --bad:#ff6b6f; --badbg:rgba(255,107,111,.13);
+    --warn:#f5b942; --warnbg:rgba(245,185,66,.13); --purple:#7b61ff;
+    --shadow:0 6px 24px rgba(0,0,0,.35);
+  }
+
+*{box-sizing:border-box;}
+
+html,body{margin:0;height:100%;}
+
+.brand{display:flex;align-items:center;gap:12px;}
+
+a{color:var(--accent);text-decoration:none;}
+
+h1{font-size:16px;margin:0;letter-spacing:1.5px;font-weight:700;}
+
+h1 small{display:block;font-size:10.5px;letter-spacing:.5px;color:var(--mut);font-weight:500;margin-top:2px;}
+
+/* ---------------------------------------------------------------------------
+ * Motion, colour scheme and contrast.  [M14 P11.5]
+ *
+ * P2 gave the chat app these. The admin surfaces never got them, and they
+ * animate more than the chat does - progress bars, pulsing status dots.
+ *
+ * color-scheme tells the browser this page is dark BEFORE any CSS paints. That
+ * is what removes the white flash on first paint, and it gives native form
+ * controls and scrollbars the right colours for free.
+ * ------------------------------------------------------------------------- */
+:root {
+    color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+@media (prefers-contrast: more) {
+    :root {
+        --line: #48597a;
+        --mut: #b9c6da;
+    }
+
+    header,
+    .card {
+        backdrop-filter: none;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+ * Cross-surface navigation.  [M14 P11.6]
+ *
+ * Five surfaces, and until now no way to move between them without knowing the
+ * URLs by heart. aria-current="page" marks the surface you are already on, so
+ * the row reads as orientation rather than as five identical links.
+ * ------------------------------------------------------------------------- */
+.surface-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    font-size: 12.5px;
+}
+
+.surface-nav a {
+    padding: 5px 10px;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    color: var(--mut);
+    white-space: nowrap;
+}
+
+.surface-nav a:hover,
+.surface-nav a:focus-visible {
+    color: var(--txt);
+    border-color: var(--line);
+    background: var(--card2, var(--card));
+}
+
+.surface-nav a[aria-current="page"] {
+    color: var(--txt);
+    border-color: var(--accent);
+    background: var(--card);
+}
+
+.surface-nav a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}

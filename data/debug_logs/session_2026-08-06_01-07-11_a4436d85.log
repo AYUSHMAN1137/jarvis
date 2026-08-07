@@ -1,0 +1,37 @@
+====================================================================================================
+  J.A.R.V.I.S DEBUG LOG
+  Session : a4436d85-dc41-438d-ad65-67b87f79b6b7
+  Started : 2026-08-06 01:07:11
+  File    : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\session_2026-08-06_01-07-11_a4436d85.log
+  Trace   : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\trace.log
+====================================================================================================
+
+[01:07:11.067] ENVIRONMENT
+    python      : 3.12.10  (win32)
+    pywinauto   : 0.6.9
+    comtypes    : 1.4.16
+    pyautogui   : 0.9.54
+    pygetwindow : 0.0.9
+    pyperclip   : 1.11.0
+    uia config  : enabled=True library=pywinauto find_timeout=5.0
+    uia engine  : alive=True apartment=sta generation=1 retired=0
+    tools       : 95 registered
+    foreground  : J.A.R.V.I.S - Personal - Microsoft​ Edge
+
+====================================================================================================
+  TURN 01  |  01:07:11  |  session a4436d85
+  USER: (daily startup brief)
+====================================================================================================
+[01:07:11.068] [+ 0.000s] [T01] [STARTUP_BRIEF] START
+    > session_id=a4436d85-dc4
+[01:07:16.720] [+ 5.653s] [T01] [STARTUP_BRIEF] FINISH
+    > chunks=62 | characters=283 | saved_empty=False
+
+[01:07:16.720] [+ 5.653s] [T01] TURN 01 END
+    reply: Good morning, Ayush. Today is Thursday, August 6, 2026. Weather data for this location is not available at the moment. Since the forecast is unknown, consider keeping flexible plans. Your email status is unavailable right now. Your calendar status is unavailable right now.
+    turn duration: + 5.653s
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+  SESSION SUSPENDED (a4436d85-dc41-438d-ad65-67b87f79b6b7) -- switching to e41da2ac-3084-4dc0-8c32-70abf6c384fb
+====================================================================================================

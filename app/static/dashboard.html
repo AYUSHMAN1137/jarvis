@@ -4,82 +4,127 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>J.A.R.V.I.S · Control Center</title>
-<style>
-  :root{
-    --bg:#070b12; --bg2:#0b1019; --card:#121a2b; --card2:#0f1626;
-    --line:#1e2a40; --txt:#e8eef6; --mut:#8190a8; --accent:#3da9fc;
-    --ok:#3ad17f; --okbg:rgba(58,209,127,.13); --bad:#ff6b6f; --badbg:rgba(255,107,111,.13);
-    --warn:#f5b942; --warnbg:rgba(245,185,66,.13); --purple:#7b61ff;
-    --shadow:0 6px 24px rgba(0,0,0,.35);
-  }
-  *{box-sizing:border-box;}
-  html,body{margin:0;height:100%;}
-  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:
+  <!-- Shared admin theme (tokens + reset), extracted from the block below.
+       Served by app/api/dashboard.py, NOT by a StaticFiles mount.  [M14 P11.1] -->
+  <link rel="stylesheet" href="/static/admin.css?v=20260804-p12">
+  <style>
+  /* Page-specific rules only. The tokens and the shared reset now live in
+     /static/admin.css, which is linked ABOVE this block so anything here
+     still wins on a tie. Read the note in that file before adding to it -
+     most of what looks shared between the two dashboards genuinely is not.
+     [M14 P11.1] */
+
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:
     radial-gradient(1200px 600px at 80% -10%,rgba(61,169,252,.10),transparent 60%),
     radial-gradient(900px 500px at -10% 110%,rgba(123,97,255,.08),transparent 55%),var(--bg);
     color:var(--txt);-webkit-font-smoothing:antialiased;min-height:100%;}
-  a{color:var(--accent);text-decoration:none;}
 
-  header{display:flex;align-items:center;justify-content:space-between;gap:16px;
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;
     padding:14px 26px;border-bottom:1px solid var(--line);position:sticky;top:0;
     background:rgba(7,11,18,.85);backdrop-filter:blur(10px);z-index:20;flex-wrap:wrap;}
-  .brand{display:flex;align-items:center;gap:12px;}
-  .logo{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;
+
+.logo{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;
     background:linear-gradient(135deg,#3da9fc,#7b61ff);box-shadow:0 4px 14px rgba(61,169,252,.4);
     font-weight:800;font-size:15px;color:#fff;}
-  h1{font-size:16px;margin:0;letter-spacing:1.5px;font-weight:700;}
-  h1 small{display:block;font-size:10.5px;letter-spacing:.5px;color:var(--mut);font-weight:500;margin-top:2px;}
-  nav{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
-  nav a{padding:7px 13px;border-radius:8px;border:1px solid var(--line);font-size:12.5px;
-    color:var(--mut);background:var(--card2);transition:.15s;}
-  nav a:hover{color:var(--txt);border-color:var(--accent);}
-  nav a.active{color:#fff;background:linear-gradient(135deg,rgba(61,169,252,.25),rgba(123,97,255,.25));border-color:var(--accent);}
-  .conn{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--mut);}
-  .dot{width:9px;height:9px;border-radius:50%;background:var(--bad);box-shadow:0 0 0 4px var(--badbg);}
-  .dot.on{background:var(--ok);box-shadow:0 0 0 4px var(--okbg);}
 
-  main{padding:22px 26px 60px;max-width:1380px;margin:0 auto;}
-  .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
-  .card{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);
+
+
+
+
+.conn{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--mut);}
+
+.dot{width:9px;height:9px;border-radius:50%;background:var(--bad);box-shadow:0 0 0 4px var(--badbg);}
+
+.dot.on{background:var(--ok);box-shadow:0 0 0 4px var(--okbg);}
+
+main{padding:22px 26px 60px;max-width:1380px;margin:0 auto;}
+
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
+
+.card{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);
     border-radius:14px;padding:16px 18px;box-shadow:var(--shadow);min-width:0;}
-  .card h2{margin:0 0 12px;font-size:12px;letter-spacing:1.2px;text-transform:uppercase;
+
+.card h2{margin:0 0 12px;font-size:12px;letter-spacing:1.2px;text-transform:uppercase;
     color:var(--mut);font-weight:700;display:flex;align-items:center;gap:8px;justify-content:space-between;}
-  .card h2 .ic{font-size:15px;}
-  .span3{grid-column:span 3;} .span4{grid-column:span 4;} .span5{grid-column:span 5;}
-  .span6{grid-column:span 6;} .span7{grid-column:span 7;} .span8{grid-column:span 8;} .span12{grid-column:span 12;}
-  @media(max-width:1080px){.span3,.span4,.span5{grid-column:span 6;}.span7,.span8{grid-column:span 12;}}
-  @media(max-width:680px){.grid > *{grid-column:span 12 !important;}}
 
-  .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;
+.card h2 .ic{font-size:15px;}
+
+.span3{grid-column:span 3;}
+
+.span4{grid-column:span 4;}
+
+.span5{grid-column:span 5;}
+
+.span6{grid-column:span 6;}
+
+.span7{grid-column:span 7;}
+
+.span8{grid-column:span 8;}
+
+.span12{grid-column:span 12;}
+
+@media(max-width:1080px){.span3,.span4,.span5{grid-column:span 6;}.span7,.span8{grid-column:span 12;}}
+
+@media(max-width:680px){.grid > *{grid-column:span 12 !important;}}
+
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;
     font-size:11.5px;font-weight:600;border:1px solid var(--line);}
-  .pill.ok{color:var(--ok);background:var(--okbg);border-color:rgba(58,209,127,.3);}
-  .pill.bad{color:var(--bad);background:var(--badbg);border-color:rgba(255,107,111,.3);}
-  .pill.warn{color:var(--warn);background:var(--warnbg);border-color:rgba(245,185,66,.3);}
-  .pill.mut{color:var(--mut);}
 
-  .health{display:flex;flex-wrap:wrap;gap:9px;}
-  .stat{display:flex;flex-direction:column;gap:3px;}
-  .stat .v{font-size:22px;font-weight:800;letter-spacing:.5px;}
-  .stat .k{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.6px;}
-  .stats-row{display:flex;gap:26px;flex-wrap:wrap;}
+.pill.ok{color:var(--ok);background:var(--okbg);border-color:rgba(58,209,127,.3);}
 
-  .kv{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed rgba(30,42,64,.7);font-size:13px;}
-  .kv:last-child{border-bottom:0;} .kv .k{color:var(--mut);} .kv .v{font-weight:600;text-align:right;word-break:break-word;}
-  .list{display:flex;flex-direction:column;gap:7px;max-height:320px;overflow:auto;}
-  .row{display:flex;align-items:flex-start;gap:9px;padding:8px 10px;border:1px solid var(--line);
+.pill.bad{color:var(--bad);background:var(--badbg);border-color:rgba(255,107,111,.3);}
+
+.pill.warn{color:var(--warn);background:var(--warnbg);border-color:rgba(245,185,66,.3);}
+
+.pill.mut{color:var(--mut);}
+
+.health{display:flex;flex-wrap:wrap;gap:9px;}
+
+.stat{display:flex;flex-direction:column;gap:3px;}
+
+.stat .v{font-size:22px;font-weight:800;letter-spacing:.5px;}
+
+.stat .k{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.6px;}
+
+.stats-row{display:flex;gap:26px;flex-wrap:wrap;}
+
+.kv{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed rgba(30,42,64,.7);font-size:13px;}
+
+.kv:last-child{border-bottom:0;}
+
+.kv .k{color:var(--mut);}
+
+.kv .v{font-weight:600;text-align:right;word-break:break-word;}
+
+.list{display:flex;flex-direction:column;gap:7px;max-height:320px;overflow:auto;}
+
+.row{display:flex;align-items:flex-start;gap:9px;padding:8px 10px;border:1px solid var(--line);
     border-radius:9px;background:rgba(15,22,38,.6);font-size:12.6px;}
-  .row .meta{color:var(--mut);font-size:11px;margin-top:2px;}
-  .tag{font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;letter-spacing:.4px;white-space:nowrap;}
-  .tag.PASS{color:var(--ok);background:var(--okbg);} .tag.FAIL{color:var(--bad);background:var(--badbg);}
-  .tag.UNKNOWN{color:var(--warn);background:var(--warnbg);}
-  .tag.learner{color:var(--purple);background:rgba(123,97,255,.14);}
-  .empty{color:var(--mut);font-size:12.5px;font-style:italic;padding:8px 2px;}
-  .bar{height:7px;border-radius:5px;background:var(--card2);overflow:hidden;border:1px solid var(--line);}
-  .bar > i{display:block;height:100%;background:linear-gradient(90deg,#3da9fc,#7b61ff);}
-  .mini{font-size:11px;color:var(--mut);}
-  footer{color:var(--mut);font-size:11.5px;text-align:center;margin-top:26px;}
-  code{background:var(--card2);padding:1px 6px;border-radius:5px;border:1px solid var(--line);font-size:12px;}
-</style>
+
+.row .meta{color:var(--mut);font-size:11px;margin-top:2px;}
+
+.tag{font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;letter-spacing:.4px;white-space:nowrap;}
+
+.tag.PASS{color:var(--ok);background:var(--okbg);}
+
+.tag.FAIL{color:var(--bad);background:var(--badbg);}
+
+.tag.UNKNOWN{color:var(--warn);background:var(--warnbg);}
+
+.tag.learner{color:var(--purple);background:rgba(123,97,255,.14);}
+
+.empty{color:var(--mut);font-size:12.5px;font-style:italic;padding:8px 2px;}
+
+.bar{height:7px;border-radius:5px;background:var(--card2);overflow:hidden;border:1px solid var(--line);}
+
+.bar > i{display:block;height:100%;background:linear-gradient(90deg,#3da9fc,#7b61ff);}
+
+.mini{font-size:11px;color:var(--mut);}
+
+footer{color:var(--mut);font-size:11.5px;text-align:center;margin-top:26px;}
+
+code{background:var(--card2);padding:1px 6px;border-radius:5px;border:1px solid var(--line);font-size:12px;}
+  </style>
 </head>
 <body>
 <header>
@@ -87,10 +132,12 @@
     <div class="logo">JV</div>
     <h1>J.A.R.V.I.S<small>CONTROL CENTER</small></h1>
   </div>
-  <nav>
-    <a href="/jarvis/" target="_blank" rel="noopener">🎙️ JARVIS</a>
-    <a href="/watcher" target="_blank" rel="noopener">👁️ Watcher</a>
-    <a href="/dashboard" class="active">📊 Dashboard</a>
+  <nav class="surface-nav" aria-label="J.A.R.V.I.S surfaces">
+    <a href="/jarvis/">Chat</a>
+    <a href="/dashboard" aria-current="page">Control Center</a>
+    <a href="/watcher">Watcher</a>
+    <a href="/jarvis/api-monitor.html">API Monitor</a>
+    <a href="/health">Health</a>
   </nav>
   <div class="conn"><span id="dot" class="dot"></span><span id="connTxt">connecting…</span></div>
 </header>
@@ -99,13 +146,13 @@
   <div class="grid">
     <!-- System health -->
     <section class="card span12">
-      <h2><span><span class="ic">🟢</span> System Health</span><span id="uptime" class="mini"></span></h2>
+      <h2><span><span class="ic" aria-hidden="true">🟢</span> System Health</span><span id="uptime" class="mini"></span></h2>
       <div class="health" id="health"></div>
     </section>
 
     <!-- Watcher -->
     <section class="card span4">
-      <h2><span><span class="ic">👁️</span> Watcher (Phase 1)</span><span id="watcherBadge"></span></h2>
+      <h2><span><span class="ic" aria-hidden="true">👁️</span> Watcher (Phase 1)</span><span id="watcherBadge"></span></h2>
       <div id="watcherKV"></div>
       <div style="margin-top:10px" class="mini">Open apps JARVIS launched</div>
       <div class="list" id="launched" style="margin-top:6px;max-height:170px"></div>
@@ -113,13 +160,13 @@
 
     <!-- Checker feed -->
     <section class="card span5">
-      <h2><span><span class="ic">✅</span> Checker — Verifications (Phase 4)</span><span id="verCount" class="pill mut">0</span></h2>
+      <h2><span><span class="ic" aria-hidden="true">✅</span> Checker — Verifications (Phase 4)</span><span id="verCount" class="pill mut">0</span></h2>
       <div class="list" id="verifs"></div>
     </section>
 
     <!-- Learner -->
     <section class="card span3">
-      <h2><span><span class="ic">🧠</span> Learner (Phase 4)</span></h2>
+      <h2><span><span class="ic" aria-hidden="true">🧠</span> Learner (Phase 4)</span></h2>
       <div id="learnerKV"></div>
       <div style="margin-top:10px" class="mini">Recent notes</div>
       <div class="list" id="learnerNotes" style="margin-top:6px;max-height:170px"></div>
@@ -127,25 +174,25 @@
 
     <!-- Skills -->
     <section class="card span5">
-      <h2><span><span class="ic">📚</span> Skills (verified, self-learned)</span><span id="skillCount" class="pill mut">0</span></h2>
+      <h2><span><span class="ic" aria-hidden="true">📚</span> Skills (verified, self-learned)</span><span id="skillCount" class="pill mut">0</span></h2>
       <div class="list" id="skills"></div>
     </section>
 
     <!-- Event bus -->
     <section class="card span3">
-      <h2><span><span class="ic">🔌</span> Event Bus</span></h2>
+      <h2><span><span class="ic" aria-hidden="true">🔌</span> Event Bus</span></h2>
       <div id="busKV"></div>
     </section>
 
     <!-- Providers -->
     <section class="card span4">
-      <h2><span><span class="ic">🔑</span> Providers / API Keys</span></h2>
+      <h2><span><span class="ic" aria-hidden="true">🔑</span> Providers / API Keys</span></h2>
       <div id="providers"></div>
     </section>
 
     <!-- Phase 5: Planner / Multi-step / UIA -->
     <section class="card span12">
-      <h2><span><span class="ic">🧩</span> Planner — Multi-step &amp; UIA (Phase 5)</span><span id="p5Badges"></span></h2>
+      <h2><span><span class="ic" aria-hidden="true">🧩</span> Planner — Multi-step &amp; UIA (Phase 5)</span><span id="p5Badges"></span></h2>
       <div id="p5KV"></div>
       <div style="margin-top:10px" class="mini">Last plan</div>
       <div id="p5Goal" class="mini" style="margin:4px 0 6px"></div>
@@ -154,7 +201,7 @@
 
     <!-- Phase 6: Verified-command cache -->
     <section class="card span4">
-      <h2><span><span class="ic">⚡</span> Command Cache (Phase 6)</span><span id="p6Badge" class="pill mut">—</span></h2>
+      <h2><span><span class="ic" aria-hidden="true">⚡</span> Command Cache (Phase 6)</span><span id="p6Badge" class="pill mut">—</span></h2>
       <div id="p6KV"></div>
       <div class="bar" style="margin:6px 0 2px"><i id="p6Bar" style="width:0%"></i></div>
       <div class="mini" id="p6Rate" style="margin-bottom:6px"></div>
@@ -164,7 +211,7 @@
 
     <!-- Phase 7: Proactive engine -->
     <section class="card span4">
-      <h2><span><span class="ic">💡</span> Proactive (Phase 7)</span><span id="p7Badge" class="pill mut">—</span></h2>
+      <h2><span><span class="ic" aria-hidden="true">💡</span> Proactive (Phase 7)</span><span id="p7Badge" class="pill mut">—</span></h2>
       <div id="p7KV"></div>
       <div class="mini" style="opacity:.7;margin:6px 0 2px">Pending suggestions</div>
       <div class="list" id="p7Pending" style="max-height:150px"></div>
@@ -174,7 +221,7 @@
 
     <!-- Phase 8: User model / personalization -->
     <section class="card span4">
-      <h2><span><span class="ic">🧠</span> Knows About You (Phase 8)</span><span id="p8Badge" class="pill mut">—</span></h2>
+      <h2><span><span class="ic" aria-hidden="true">🧠</span> Knows About You (Phase 8)</span><span id="p8Badge" class="pill mut">—</span></h2>
       <div id="p8KV"></div>
       <div class="mini" style="opacity:.7;margin:6px 0 2px">Facts</div>
       <div class="list" id="p8Facts" style="max-height:150px"></div>
@@ -184,7 +231,7 @@
 
     <!-- Command Tester: bulk live testing tool -->
     <section class="card span12">
-      <h2><span><span class="ic">🧪</span> Command Tester — Bulk Live Testing</span><span id="ctBadge" class="pill mut">idle</span></h2>
+      <h2><span><span class="ic" aria-hidden="true">🧪</span> Command Tester — Bulk Live Testing</span><span id="ctBadge" class="pill mut">idle</span></h2>
       <div class="mini">Paste commands, one per line. They run <b>one-by-one, live, with real actions</b>. Every verdict is verified honestly — watcher / tool-result / soft AI-judge — and never trusts the assistant's narration.</div>
       <textarea id="ctInput" spellcheck="false" placeholder="open YouTube&#10;what is the weather in Dehradun&#10;set volume to 40&#10;shutdown the pc"
         style="width:100%;box-sizing:border-box;min-height:104px;margin-top:10px;resize:vertical;background:#0c1020;color:#e8ecf6;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:10px 12px;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;"></textarea>

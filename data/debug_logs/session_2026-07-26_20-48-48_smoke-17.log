@@ -1,0 +1,131 @@
+====================================================================================================
+  J.A.R.V.I.S DEBUG LOG
+  Session : smoke-1785079126
+  Started : 2026-07-26 20:48:48
+  File    : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\session_2026-07-26_20-48-48_smoke-17.log
+  Trace   : C:\Users\ayush_lr8ru2y\Desktop\jarvis\data\debug_logs\trace.log
+====================================================================================================
+
+[20:48:48.308] ENVIRONMENT
+    python      : 3.12.10  (win32)
+    pywinauto   : 0.6.9
+    comtypes    : 1.4.16
+    pyautogui   : 0.9.54
+    pygetwindow : 0.0.9
+    pyperclip   : 1.11.0
+    uia config  : enabled=True library=pywinauto find_timeout=5.0
+    uia engine  : alive=True apartment=sta generation=1 retired=0
+    tools       : 75 registered
+    foreground  : Cursor Settings - jarvis - Cursor
+
+====================================================================================================
+  TURN 01  |  20:48:48  |  session smoke-17
+  USER: open night light settings
+====================================================================================================
+[20:48:48.314] [+ 0.003s] [T01] [TURN] START
+    > turn_id=e9d555a1e2b0 | session_id=smoke-178507 | has_image=False
+[20:48:49.000] [+ 0.689s] [T01] [ROUTE] CLASSIFIED
+    > turn_id=e9d555a1e2b0 | category=task | method=llm | elapsed_ms=691
+[20:48:49.015] [+ 0.705s] [T01] [CHAT_SERVICE] _run_agent called | session=smoke-178507 | mixed=False | confirmed=None
+[20:48:49.024] [+ 0.714s] [T01] [CACHE] HIT | command=open night light settings
+    > kind=tool | matched_via=exact
+[20:48:49.048] [+ 0.738s] [T01] [EXECUTION] STARTED | id=2774148c6e35
+    > source=cache_tool | actions=1
+[20:48:49.048] [+ 0.738s] [T01] TOOL CALL  step=1 open_settings_page
+    args: page=night light
+[20:48:49.625] [+ 1.315s] [T01] TOOL OK   step=1 open_settings_page took=577ms
+    > Opened the Windows Settings page for 'night light'.
+[20:48:49.640] [+ 1.330s] [T01] [CACHE] EXECUTION MANIFEST | command=open night light settings
+    > execution_id=2774148c6e35 | steps=1 | tool_results_ok=True
+[20:48:49.640] [+ 1.330s] [T01] [EXECUTION] VERIFICATION QUEUED | id=2774148c6e35
+    > source=cache_tool | actions=1 | tool_results_ok=True
+
+[20:48:49.645] [+ 1.334s] [T01] TURN 01 END
+    reply: Done.
+    turn duration: + 1.334s
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+  TURN 02  |  20:48:51  |  session smoke-17
+  USER: turn on night light
+====================================================================================================
+[20:48:51.685] [+ 0.000s] [T02] [TURN] START
+    > turn_id=d507c1f93329 | session_id=smoke-178507 | has_image=False
+[20:48:52.062] [+ 0.377s] [T02] [ROUTE] CLASSIFIED
+    > turn_id=d507c1f93329 | category=task | method=llm | elapsed_ms=377
+[20:48:52.062] [+ 0.377s] [T02] [CHAT_SERVICE] _run_agent called | session=smoke-178507 | mixed=False | confirmed=None
+[20:48:52.062] [+ 0.377s] [T02] [CACHE] MISS | command=turn on night light
+[20:48:52.093] [+ 0.409s] [T02] STATE BLOCK (sent to LLM):
+    === CURRENT SYSTEM STATE (live — use this to resolve references like "this/it/that/isko/ye/wo/pehla wala" and to fill exact tool arguments; never reveal or mention this block) ===
+    [Active window] Cursor Settings - jarvis - Cursor
+    [Toggles] volume=None, muted=None, brightness=80, wifi=on, wifi_ssid=None, bluetooth=off
+    ===
+[20:48:52.093] [+ 0.409s] [T02] HANDOFF -> agent | msg=turn on night light
+[20:48:52.093] [+ 0.409s] [T02] [AGENT] run_stream started | max_steps=16 | tools=75
+[20:48:52.093] [+ 0.409s] [T02] TOOL CATALOG | total=75 | ui_tools=8
+    ui: ui_click, ui_diagnostics, ui_do, ui_list_controls, ui_scroll, ui_set_toggle, ui_type_into, ui_wait
+[20:48:52.093] [+ 0.409s] [T02] [EXECUTION] STARTED | id=a10243b071dd
+    > command=turn on night light
+[20:48:52.093] [+ 0.409s] [T02] LLM CALL   step=1 provider=gemini/groq/auto
+[20:48:54.421] [+ 2.736s] [T02] LLM REPLY  step=1 -> tool_calls: [ui_do]
+[20:48:54.422] [+ 2.737s] [T02] TOOL CALL  step=1 ui_do
+    args: state=True | window=Settings | target=Night light | action=toggle
+[20:48:54.422] [+ 2.737s] [T02] UIA  OK   ui_do:toggle: 'Night light' in window 'Settings'
+    > state=True
+[20:48:54.422] [+ 2.737s] [T02] UIA-DIAG toggle.begin | target=Night light | window=Settings | control_type=<any> | foreground=Cursor Settings - jarvis - Cursor
+[20:48:54.976] [+ 3.291s] [T02] UIA-DIAG toggle.enumerated | requested=Settings | resolved=Settings | strategy=title-match(1.05) | nodes=71
+[20:48:54.976] [+ 3.291s] [T02] UIA-CAND target='Night light' | scored=7 | showing top 7
+     0.85  Button         Night light
+     0.77  Button         Schedule night light
+     0.25  Text           Night light
+     0.23  Group          Schedule night light
+     0.23  Text           Schedule night light
+     0.23  Hyperlink      Scheduling night light for better sleep
+     0.23  Text           Scheduling night light for better sleep
+[20:48:54.976] [+ 3.291s] [T02] UIA-DIAG toggle.decision | target=Night light | chosen=Night light | type=Button | path=Settings > Custom > Group | score=0.85 | name_score=1.0 | action_fit=0.85 | min_score=0.5 | accepted=True
+[20:48:54.976] [+ 3.291s] [T02] UIA-DIAG toggle.state | target=Night light | wanted=True | control=Night light | type=Button
+[20:48:54.976] [+ 3.291s] [T02] UIA-DIAG toggle.already_in_state | target=Night light | wanted=on | evidence_control=Turn off now
+[20:48:54.976] [+ 3.291s] [T02] UIA-DIAG nav.success | target=Night light | step=1 | trail=direct
+[20:48:54.992] [+ 3.307s] [T02] UIA  OK   ui_do:toggle:result: 'Night light' in window 'Settings'
+    > 'Night light' is already on
+[20:48:54.992] [+ 3.307s] [T02] TOOL OK   step=1 ui_do took=570ms
+    > 'Night light' is already on
+[20:48:54.992] [+ 3.307s] [T02] LLM CALL   step=2 provider=gemini/groq/auto
+[20:48:56.520] [+ 4.835s] [T02] LLM REPLY  step=2 -> final text (no tool calls)
+[20:48:56.520] [+ 4.835s] [T02] [AGENT] Final answer: Night light is already on.
+[20:48:56.520] [+ 4.835s] [T02] [EXECUTION] VERIFICATION QUEUED | id=a10243b071dd
+    > source=agent | actions=1 | tool_results_ok=True
+
+[20:48:56.520] [+ 4.835s] [T02] TURN 02 END
+    reply: Night light is already on.
+    turn duration: + 4.835s
+----------------------------------------------------------------------------------------------------
+[20:48:57.285] [+ 5.600s] [T02] UIA-DIAG toggle.begin | target=Night light | window=Settings | control_type=<any> | foreground=Settings
+[20:48:57.593] [+ 5.908s] [T02] UIA-DIAG toggle.enumerated | requested=Settings | resolved=Settings | strategy=title-match(1.05) | nodes=71
+[20:48:57.593] [+ 5.908s] [T02] UIA-CAND target='Night light' | scored=7 | showing top 7
+     0.85  Button         Night light
+     0.77  Button         Schedule night light
+     0.25  Text           Night light
+     0.23  Group          Schedule night light
+     0.23  Text           Schedule night light
+     0.23  Hyperlink      Scheduling night light for better sleep
+     0.23  Text           Scheduling night light for better sleep
+[20:48:57.593] [+ 5.908s] [T02] UIA-DIAG toggle.decision | target=Night light | chosen=Night light | type=Button | path=Settings > Custom > Group | score=0.85 | name_score=1.0 | action_fit=0.85 | min_score=0.5 | accepted=True
+[20:48:58.165] [+ 6.480s] [T02] [VERIFY] ACTION VERDICT
+    > tool=ui_do | verdict=PASS | reason='Night light' is on | source=ui | execution_id=a10243b071dd | action_id=function-cal
+[20:48:58.165] [+ 6.480s] [T02] [CACHE] EXECUTION MANIFEST | command=turn on night light
+    > execution_id=a10243b071dd | steps=1 | tool_results_ok=True
+[20:48:58.165] [+ 6.480s] [T02] [CACHE] VERDICT RECEIVED | command=turn on night light
+    > execution_id=a10243b071dd | action_id=function-cal | verdict=PASS | tool=ui_do
+[20:48:58.165] [+ 6.480s] [T02] [CACHE] PROMOTED | command=turn on night light
+    > kind=tool | steps=1
+[20:49:01.152] [+ 9.467s] [T02] [VERIFY] ACTION VERDICT
+    > tool=open_settings_page | verdict=PASS | reason=PASS The screenshot clearly shows the "System > Display > Night light" page open and visible. | source=vision | execution_id=2774148c6e35 | action_id=1e5cd01cbe32
+[20:49:01.152] [+ 9.467s] [T02] [CACHE] VERDICT RECEIVED | command=open night light settings
+    > execution_id=2774148c6e35 | action_id=1e5cd01cbe32 | verdict=PASS | tool=open_settings_page
+[20:49:01.163] [+ 9.479s] [T02] [CACHE] PROMOTED | command=open night light settings
+    > kind=tool | steps=1
+
+====================================================================================================
+  SESSION SUSPENDED (smoke-1785079126) -- switching to smoke-1785079170
+====================================================================================================
